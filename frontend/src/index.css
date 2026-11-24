@@ -1,5 +1,6 @@
-@import "tailwindcss";
 
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Firjar:wght@100..800&family=Manrope:wght@200..800&display=swap');
+@import "tailwindcss";
 /* ==============================
    CSS RESET
 ============================== */
@@ -19,11 +20,24 @@ html {
 body {
   min-height: 100vh;
   width: 100%;
-  font-family: "Inter", sans-serif;
-  background-color: #ffffff;
-  color: #111111;
+  max-width: 1300px;
+  margin: auto;
+  font-family: "Manrope", sans-serif;
+  background-color: #131523;
+  color: #ffffff;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  padding-top: 100px;
+}
+
+.manrope{
+  font-family: "Manrope", sans-serif;
+}
+.anton {
+  font-family: "Anton", sans-serif;
+}
+.firjar{
+  font-family: "Firjar", sans-serif;
 }
 
 /* ==============================
@@ -59,9 +73,20 @@ ol {
   list-style: none;
 }
 
-::selection {
-  background-color: #111111;
-  color: #ffffff;
+
+footer{
+  min-height: 70vh;
+}
+
+
+.home{
+  max-width: 1300px;
+  width: 100%;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 60px;
+  margin: auto;
 }
 
 /* ==============================
@@ -103,4 +128,68 @@ ol {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+
+
+
+
+
+
+/* ---------------- */
+/* ==============================
+   PADDING
+============================== */
+
+/* Padding all sides */
+.p-6 {
+  padding: 24px;
+}
+.p-3{
+  padding: 18px;
+}
+
+.px-4{
+  padding-left: 16px;
+  padding-right: 16px;
+} 
+.py-3{
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+/* Padding left and right */
+.px-6 {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+/* Padding top and bottom */
+.py-16 {
+  padding-top: 64px;
+  padding-bottom: 64px;
+}
+
+
+/* ==============================
+   MARGIN
+============================== */
+
+/* Margin left and right */
+.mx-auto {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Margin top */
+.mt-1 {
+  margin-top: 4px;
+}
+
+.mt-2 {
+  margin-top: 8px;
+}
+
+.mt-8 {
+  margin-top: 32px;
 }
