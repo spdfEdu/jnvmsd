@@ -1,14 +1,63 @@
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import CommunityNews from "../components/alumni/CommunityNews";
 import BackgroundVideo from "../components/layout/BackgroundVideo";
+import BatchCard from "@/components/BatchCard";
 
 /** Render the home view. */
 const Home = () => {
+  const batches = Array.from({ length: 17 }, (_, index) => ({
+    id: index + 1,
+    year: `${2003 + index}-${2004 + index}`,
+    batch: `Batch ${index + 1}`,
+  }));
+
   return (
-    <div className="w-full min-h-screen">
-      <BackgroundVideo /><CommunityNews />
+    <div className="w-full min-h-screen relative">
+      <BackgroundVideo />
+
+      <div className="">
+        <Dialog>
+          <form>
+            <DialogTrigger
+              render={
+                <Button
+                  className="text-gray-700 fixed bottom-5 right-5 rounded-full h-20 w-20 border-b-rose-700 border-t-blue-700 border-r-amber-400 border-l-lime-600 border-8"
+                  variant="outline"
+                >
+                  News
+                </Button>
+              }
+            />
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader></DialogHeader>
+
+              <CommunityNews />
+
+              <DialogFooter>
+                <DialogClose />
+              </DialogFooter>
+            </DialogContent>
+          </form>
+        </Dialog>
+      </div>
+
       <section className="home">
-        <div className="w-full bg-center bg-no-repeat bg-cover border border-amber-100/60 h-[75vh] rounded-3xl relative"
-          style={{ backgroundImage: `url(${import.meta.env.BASE_URL}images/schoolimg.png)` }}>
+        <div
+          className="w-full bg-center bg-no-repeat bg-cover border border-amber-100/60 h-[75vh] rounded-3xl relative"
+          style={{
+            backgroundImage: `url(${import.meta.env.BASE_URL}images/schoolimg.png)`,
+          }}
+        >
           <div className="absolute flex flex-col left-5 bottom-5">
             <img
               src={`${import.meta.env.BASE_URL}images/circulerlogo.png`}
@@ -143,38 +192,15 @@ const Home = () => {
         <center className="anton font-bold text-[clamp(20px,10vw,50px)]">
           ALL BATCHES
         </center>
-        {/* Cards */}
-        <div className="grid grid-cols-1  lg:grid-cols-3 gap-6 ">
-          {/* CARD 1 */}
-          <div className="relative rounded-2xl overflow-hidden min-h-[480px] group">
-            {/* Background Image */}
-            <img
-              src={`${import.meta.env.BASE_URL}images/batch2018.jpg`}
-              alt=""
-              className="absolute left-0 top-0 inset-1 z-1 w-full h-full object-cover beat"
-            />
 
-            {/* Overlay */}
-            <div className="absolute bottom-0 w-full h-[150px] bg-gradient-to-t from-white to-transparent z-2"></div>
-
-            {/* Content */}
-            <div className="relative z-10 p-6 flex flex-col justify-between h-full text-black z-2">
-              <h3 className="text-2xl anton leading-tight">Batch 9</h3>
-
-              <div>
-                <p className="text-sm  mb-4 snpro">
-                  Batch of 2011 - 2018 | JNV Msd
-                </p>
-
-                <div className="h-[1px] bg-black/40 mb-4"></div>
-
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <span className="px-3 py-1 bg-white/40 rounded-full cursor-pointer"></span>
-                </div>
-              </div>
+        <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {batches.map((item) => (
+            <div className="w-full" key={item.id}>
+              <BatchCard year={item.year} batch={item.batch}  />
             </div>
-          </div>
+          ))}
         </div>
+        <div className=""></div>
 
         {/* ----------------latest events------------------ */}
         <div className="flex flex-col gap-6">
@@ -183,7 +209,11 @@ const Home = () => {
           </center>
 
           <center className="w-full h-full">
-            <img src={`${import.meta.env.BASE_URL}images/Alapan.jpg`} alt="" className="" />
+            <img
+              src={`${import.meta.env.BASE_URL}images/Alapan.jpg`}
+              alt=""
+              className=""
+            />
           </center>
           <center className="text-[clamp(15px,7vw,30px)] font-bold">
             JNV MURSHIDABAD ALUMNI MEET 2026

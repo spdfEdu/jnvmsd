@@ -1,6 +1,21 @@
 import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { Menu, X } from "lucide-react";
+import { useAuth } from "../../auth/useAuth";
+
+/** Show navigation appropriate to the server-verified role. */
+function AccountNav() {
+  const { account } = useAuth();
+  return (
+    <nav className="alumni-account-nav" aria-label="Member services">
+      <Link to="/profile">{account ? "My profile" : "Member sign-in"}</Link>
+      {(account?.isCore || account?.isAdmin) && (
+        <Link to="/organizers">Participation</Link>
+      )}
+      {account?.isAdmin && <Link to="/manage">Administration</Link>}
+    </nav>
+  );
+}
 
 /** Render the navbar view. */
 const Navbar = () => {
@@ -78,6 +93,8 @@ const Navbar = () => {
               {link.name}
             </NavLink>
           ))}
+
+          <AccountNav />
         </div>
       </div>
     </nav>
