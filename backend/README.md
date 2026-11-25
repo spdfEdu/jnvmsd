@@ -1,2 +1,0 @@
-# jnvmsd
-JNV Msd Alumni

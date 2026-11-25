@@ -20,7 +20,7 @@ const Navbar = () => {
   const closeMenu = () => setIsOpen(false);
 
   return (
-    <nav className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-full max-w-[1250px] rounded-full px-6 py-[24px] bg-amber-100 text-gray-700">
+    <nav className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-full max-w-[1250px] rounded-full px-6 py-[24px] bg-amber-100 ">
       <div className="mx-auto flex max-w-7xl items-center justify-between">
 
         {/* Logo */}
@@ -35,7 +35,7 @@ const Navbar = () => {
         {/* Dropdown Button */}
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-3 rounded-full bg-white/10 px-5 py-3 backdrop-blur-md transition hover:bg-white/20"
+          className="flex items-center gap-3 rounded-full text-gray-700 bg-white/10 px-5 py-3 backdrop-blur-md transition hover:bg-white/20"
           aria-expanded={isOpen}
           aria-label="Toggle navigation menu"
         >
