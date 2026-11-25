@@ -1,0 +1,19 @@
+{
+  "name": "jnvmsd-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.local.toml --local --ip 127.0.0.1",
+    "db:migrate:local": "wrangler d1 migrations apply DB --config wrangler.local.toml --local",
+    "test": "node --test",
+    "test:schema": "node --test tests/schema.test.js",
+    "check": "node --check index.js",
+    "build": "wrangler deploy --config wrangler.local.toml --dry-run"
+  },
+  "devDependencies": {
+    "miniflare": "4.20260730.0",
+    "wrangler": "4.168.0"
+  }
+}

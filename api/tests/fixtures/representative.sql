@@ -1,0 +1,5 @@
+INSERT INTO members (id, sub, email, batch, name, data, status, photo, created_at, updated_at) VALUES ('11111111-1111-4111-8111-111111111111', 'student-sub', 'student@example.test', 2015, 'Test Student', '{"Name":"Test Student","Batch":2015,"Phone":9876543210}', 'approved', 'live/student.webp', 1, 1);
+INSERT INTO photos (key, content_type, data, created_at) VALUES ('live/student.webp', 'image/webp', 'AQID', 1);
+INSERT INTO gallery (id, member_id, status, bytes, created_at) VALUES ('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111', 'approved', 3, 1);
+INSERT INTO roles (email, role, note, added_by, created_at) VALUES ('student@example.test', 'core', 'Test fixture', 'admin@example.test', 1);
+INSERT INTO meet2026 (email, member_id, batch, name, phone, status, institute, attend, companions, companion_count, breakfast, lunch, tshirt, mentor, created_at, updated_at) VALUES ('student@example.test', '11111111-1111-4111-8111-111111111111', 2015, 'Test Student', '9876543210', 'Working', 'Example Institute', 'Yes', 'Yes', 2, 'Yes', 'Yes', 'M', 'Yes', 1, 1);

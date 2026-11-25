@@ -1,0 +1,19 @@
+# Local-only development resources. No production account or resource IDs.
+name = "jnvmsd-api-local"
+main = "index.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+GOOGLE_CLIENT_ID = "configure-a-development-google-client.apps.googleusercontent.com"
+ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+ADMIN_EMAILS = ""
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jnvmsd-local"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "GALLERY"
+id = "00000000000000000000000000000001"

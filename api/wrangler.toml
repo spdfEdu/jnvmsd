@@ -1,0 +1,27 @@
+name = "api"
+main = "index.js"
+compatibility_date = "2026-01-01"
+# keeps ADMIN_EMAILS (set in the Cloudflare dashboard) when GitHub deploys
+keep_vars = true
+
+[vars]
+GOOGLE_CLIENT_ID = "1019761610975-qba21qjqvvlr8kbeda7sut319m6gnt2f.apps.googleusercontent.com"
+ALLOWED_ORIGINS = "https://jnvmsd.blogspot.com,https://jnvmsdalumni.blogspot.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jnvmsd"
+database_id = "eb38fd84-1265-401f-a467-0b93c64a9169"
+
+[[kv_namespaces]]
+binding = "GALLERY"
+id = "22dc16dc29cd45fd8293238bbe9e318d"
+
+# every day at 4 pm India time (10:30 UTC): email one admin if anything waits for approval
+[triggers]
+crons = ["30 10 * * *"]
+
+# Cloudflare Email: turn this on after the domain is set up for Email Sending (see the steps given with this file),
+# then set MAIL_FROM (an address on that domain) in the dashboard under Variables. keep_vars keeps it on deploys.
+# [[send_email]]
+# name = "EMAIL"

@@ -1,0 +1,4 @@
+# Copy to .dev.vars for LOCAL development; never commit real credentials.
+GOOGLE_CLIENT_ID="YOUR_DEVELOPMENT_CLIENT_ID.apps.googleusercontent.com"
+ADMIN_EMAILS="your-google-email@example.com"
+ALLOWED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
