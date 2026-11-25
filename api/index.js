@@ -14,8 +14,13 @@ const TEXT = {
 const LISTS = { EduList: 6, WorkList: 5, JnvVisits: 3 }; // education: from|to|course|institute|city|highest, work: from|to|place|position|city
 const MAX_ROWS = 10;
 const HANDLES = ["fb", "insta"]; // stored as the bare username
-// never sent to the public blog
-const PRIVATE_KEYS = ["Phone", "Phone2", "PinCode", "Address", "DOB"];
+// Explicit public fields: contact details and unknown imported fields stay private.
+const PUBLIC_KEYS = new Set([
+  "Name", "Batch", "District", "CurrentStatus", "Institute", "HQD", "Employment",
+  "Bio", "Occupation", "Company", "WorkCity", "City", "Skills", "Languages", "Memories",
+  "Achievements", "EduList", "WorkList", "JnvVisits", "House", "BloodGroup",
+  "linkedin", "twitter", "youtube", "fb", "insta", "rip", "ppl", "gpic", "photo", "tag", "gallery",
+]);
 const KEEP_KEYS = ["ppl", "rip", "gpic"]; // old Drive photo id, memorial year, and the Google photo (saved at sign-in); not edited on the forms
 const SESSION_DAYS = 30; // how long a sign-in lasts after the last visit
 const MAX_SESSIONS = 10; // devices per person
@@ -293,10 +298,6 @@ const meetOut = (r) => ({
 });
 
 /* ---------- views ---------- */
-function shortMail(e) {
-  return typeof e === "string" && e.toLowerCase().endsWith("@gmail.com") ? e.slice(0, -10) : e;
-}
-
 function entryOf(row, level, origin, tag, gallery) {
   const d = JSON.parse(row.data || "{}");
   d.Batch = row.batch;
@@ -305,8 +306,7 @@ function entryOf(row, level, origin, tag, gallery) {
   if (tag) d.tag = tag; // "Admin" or "Core Member", shown on the profile
   if (gallery && gallery.length) d.gallery = gallery; // every uploaded photo shows on the profile
   if (level !== "full") {
-    for (const k of PRIVATE_KEYS) delete d[k];
-    if (d.EmailId) d.EmailId = shortMail(d.EmailId);
+    for (const k of Object.keys(d)) if (!PUBLIC_KEYS.has(k)) delete d[k];
   }
   return d;
 }
@@ -390,7 +390,7 @@ async function dropGalleryPhoto(env, id) {
 async function dropPublicCache(url, years) {
   if (typeof caches === "undefined" || !caches.default) return;
   for (const y of new Set(years)) {
-    try { await caches.default.delete(new Request(url.origin + "/api/batch/" + y + "?level=public")); } catch {}
+    try { await caches.default.delete(new Request(url.origin + "/api/batch/" + y + "?level=public&privacy=2")); } catch {}
   }
 }
 
@@ -407,11 +407,10 @@ async function route(req, url, env) {
     const level = url.searchParams.get("level") === "full" ? "full" : "public";
     const year = Number(m[1]);
     const ver = await getVer(env);
-    const have = url.searchParams.get("v");
-    if (level === "public" && have && Number(have) === ver) return jsonRes({ unchanged: true, ver, batch: year }, 200, { "Cache-Control": "no-store" }); // the page already has this version
+    // Always send sanitized data, including to clients holding an older public payload.
     let cacheKey = null;
     if (level === "public" && typeof caches !== "undefined" && caches.default) {
-      cacheKey = new Request(url.origin + "/api/batch/" + year + "?level=public");
+      cacheKey = new Request(url.origin + "/api/batch/" + year + "?level=public&privacy=2");
       const hit = await caches.default.match(cacheKey);
       if (hit) return new Response(hit.body, hit);
     }
@@ -526,16 +525,16 @@ async function route(req, url, env) {
   }
 
   /* ----- Alumni Meet 2026 ----- */
-  // public: batches that have names, and the names of one batch (with the Gmail each entry signs in with)
+  // public: batches and names only; login emails are never exposed
   if (method === "GET" && path === "/api/meet/batches") {
     const { results } = await env.DB.prepare("SELECT batch, COUNT(*) AS n FROM members WHERE status = 'approved' GROUP BY batch ORDER BY batch").all();
     return jsonRes({ batches: results }, 200, { "Cache-Control": "public, max-age=60" });
   }
   if (method === "GET" && (m = path.match(/^\/api\/meet\/names(?:\/(\d{4}))?$/))) {
     const year = m[1] ? Number(m[1]) : null; // no year: every batch, for the search box
-    const q = env.DB.prepare("SELECT name, email, batch FROM members WHERE status = 'approved'" + (year ? " AND batch = ?" : "") + " ORDER BY batch, name COLLATE NOCASE");
+    const q = env.DB.prepare("SELECT id, name, batch FROM members WHERE status = 'approved'" + (year ? " AND batch = ?" : "") + " ORDER BY batch, name COLLATE NOCASE");
     const { results } = await (year ? q.bind(year) : q).all();
-    const names = results.map((r) => ({ name: r.name, batch: r.batch, email: /@jnvmsd\.invalid$/i.test(r.email) ? "" : r.email }));
+    const names = results.map((r) => ({ id: r.id, name: r.name, batch: r.batch }));
     return jsonRes({ batch: year, names }, 200, { "Cache-Control": "public, max-age=60" });
   }
   // signed in: what the form needs (profile details to pre-fill, an earlier response, and whether to show View Responses)
@@ -560,7 +559,7 @@ async function route(req, url, env) {
     const { data: d, errors } = cleanMeet(body && body.data);
     if (errors.length) throw new HttpError(400, errors.join(". "));
     const t = now();
-    // The same details also go to the alumni directory (members). The Meet form is a one-to-one link, so new people are added straight away.
+    // Meet registration does not prove alumni identity. New directory profiles require admin approval.
     const c = clean({ Name: d.name, Batch: d.batch, Phone: d.phone, CurrentStatus: d.status, Institute: d.institute }, user.email);
     if (c.errors.length) throw new HttpError(400, c.errors.join(". "));
     const extra = {};
@@ -586,31 +585,12 @@ async function route(req, url, env) {
     } else {
       const taken = await env.DB.prepare("SELECT id FROM members WHERE email = ?").bind(user.email).first();
       if (taken) throw new HttpError(409, "This Gmail already belongs to another Google account");
-      const { results } = await env.DB.prepare(
-        "SELECT * FROM members WHERE status = 'approved' AND batch = ? AND sub IS NULL AND email LIKE '%@jnvmsd.invalid' AND lower(name) = lower(?)"
-      ).bind(d.batch, d.name).all();
-      if (results.length === 1) {
-        // the imported entry of this person: attach the Gmail to it
-        const tm = results[0], tdata = parse(tm.data) || {};
-        const merged = clean({ ...tdata, ...extra, Name: tdata.Name || tm.name, Batch: tm.batch }, user.email);
-        keepLegacy(tdata, merged.data);
-        await env.DB.prepare("UPDATE members SET sub = ?, email = ?, data = ?, prev = ?, updated_at = ? WHERE id = ?")
-          .bind(user.sub, user.email, JSON.stringify(merged.data), tm.data, t, tm.id).run();
-        await touched(env, url, [tm.batch]);
-        memberId = tm.id; batch = tm.batch; name = tdata.Name || tm.name;
-      } else if (results.length === 0) {
-        memberId = crypto.randomUUID();
-        await env.DB.prepare("INSERT INTO members (id, sub, email, batch, name, data, draft, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, 'approved', ?, ?)")
-          .bind(memberId, user.sub, user.email, c.data.Batch, c.data.Name, JSON.stringify(c.data), t, t).run();
-        await touched(env, url, [c.data.Batch]);
-        tail = " You are now listed in the alumni directory too.";
-      } else {
-        // two imported entries share this name and batch: let the admin decide which one is this person
-        memberId = crypto.randomUUID();
-        await env.DB.prepare("INSERT INTO members (id, sub, email, batch, name, data, draft, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '{}', ?, 'pending', ?, ?)")
-          .bind(memberId, user.sub, user.email, c.data.Batch, c.data.Name, JSON.stringify(c.data), t, t).run();
-        tail = " Your profile is waiting for the admin to match it with the right entry.";
-      }
+      // Never attach a Google account to an imported profile using a public name/batch.
+      // Admins verify pending signups and explicitly merge them with imported records.
+      memberId = crypto.randomUUID();
+      await env.DB.prepare("INSERT INTO members (id, sub, email, batch, name, data, draft, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '{}', ?, 'pending', ?, ?)")
+        .bind(memberId, user.sub, user.email, c.data.Batch, c.data.Name, JSON.stringify(c.data), t, t).run();
+      tail = " Your profile is waiting for the admin to approve or link it to an existing entry.";
     }
 
     await env.DB.prepare(
@@ -706,11 +686,12 @@ async function route(req, url, env) {
     return jsonRes({ ok: true });
   }
 
-  // review: admins and core members choose which photos join the batch slider
+  // review: admins moderate; core members may only read
   if (path.startsWith("/api/review/gallery")) {
     const user = await requireUser(req, env);
     const role = await roleOf(env, user);
-    if (!canSeeContacts(role)) throw new HttpError(403, "Only admins and core members can review photos");
+    if (!canSeeContacts(role)) throw new HttpError(403, "Only admins and core members can view photo review");
+    if (method !== "GET" && !isAdminRole(role)) throw new HttpError(403, "Only admins can moderate photos");
     if (path === "/api/review/gallery" && method === "GET") {
       const st = url.searchParams.get("status");
       const yr = Number(url.searchParams.get("batch")) || 0;
@@ -844,9 +825,14 @@ async function route(req, url, env) {
         if (errors.length) throw new HttpError(400, errors.join(". "));
         keepLegacy(tdata, data);
         const sub = mem.sub, email = mem.email, draftPhoto = mem.draft_photo;
-        await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(mem.id).run(); // frees the unique email and sub
-        await env.DB.prepare("UPDATE members SET sub = ?, email = ?, data = ?, prev = ?, updated_at = ? WHERE id = ?")
-          .bind(sub, email, JSON.stringify(data), target.data, now(), target.id).run();
+        // Keep ownership and registration references together if any statement fails.
+        await env.DB.batch([
+          env.DB.prepare("DELETE FROM members WHERE id = ?").bind(mem.id),
+          env.DB.prepare("UPDATE members SET sub = ?, email = ?, data = ?, prev = ?, updated_at = ? WHERE id = ?")
+            .bind(sub, email, JSON.stringify(data), target.data, now(), target.id),
+          env.DB.prepare("UPDATE meet2026 SET member_id = ? WHERE member_id = ?")
+            .bind(target.id, mem.id),
+        ]);
         if (draftPhoto) {
           const moved = await promotePhoto(env, { ...target, draft_photo: draftPhoto });
           await env.DB.prepare("UPDATE members SET photo = ? WHERE id = ?").bind(moved, target.id).run();

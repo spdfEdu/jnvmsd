@@ -4,7 +4,7 @@
 
 The three supplied files did not include SQL schema, migrations, tests, or dependency metadata. `migrations/0001_baseline.sql` reconstructs the tables required by the Worker **for a fresh database**. It does not establish what exists in production. No production database, KV namespace, email service, or Google account has been accessed.
 
-`index.js` and the original `wrangler.toml` are preserved byte-for-byte. The working copy is separate from the source folder. All standard scripts select the local configuration explicitly. Tests use ephemeral Miniflare D1/KV, fabricated accounts, and test sessions inserted directly into the test database. They do not bypass authentication in the application and do not test real Google token issuance.
+The original source folder and production `wrangler.toml` remain unchanged. The working `index.js` includes the Task 2 permission/privacy fixes. The working copy is separate from the source folder. All standard scripts select the local configuration explicitly. Tests use ephemeral Miniflare D1/KV, fabricated accounts, and test sessions inserted directly into the test database. They do not bypass authentication in the application and do not test real Google token issuance.
 
 ## Run locally
 
@@ -83,6 +83,6 @@ No reconciliation migration is supplied yet because the actual database schema i
 - [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
 - [Miniflare D1 testing](https://developers.cloudflare.com/workers/testing/miniflare/storage/d1/)
 
-Direct dependency versions and the dependency tree are pinned in package.json and package-lock.json. Installation succeeded on D:. Eight tests pass, local migration and repeat application succeed, and the dry-run build and live local health/directory checks pass. Production compatibility and real Google sign-in remain unverified.
+Direct dependency versions and the dependency tree are pinned in package.json and package-lock.json. Installation succeeded on D:. Eighteen tests pass, local migration and repeat application succeed, and the dry-run build and live local health/directory checks pass. Production compatibility and real Google sign-in remain unverified.
 
 Without installing dependencies, `npm run test:schema` executes the baseline against Node's built-in SQLite. These tests cover fresh tables, synthetic restoration, unique identities, and safe refusal to reapply to an existing schema. They do not substitute for Miniflare/D1 integration tests or live-data migration rehearsal. Node emits its experimental SQLite warning on the installed version.

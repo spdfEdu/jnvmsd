@@ -18,3 +18,12 @@ User approved starting the plan one step at a time. Current milestone: Task 1, l
 - Review: independent reviewer found no remaining actionable issues in baseline/query compatibility and local setup. D: environment script documentation was verified in the review.
 - Task 1 production portion remains pending: actual schema/index/constraint inventory, real backup restore/reconciliation, and real Google login configuration. Never apply the inferred fresh baseline to an existing production DB.
 - Task 2 is next: correct profile claiming, public email exposure, and core-member gallery moderation permissions. No production deployment or GitHub push has occurred.
+
+- Task 2 started: executing approved permission/identity/privacy work on D:; no production changes.
+- TDD: new access/identity suite reproduced 5 failures (public email/unknown fields, core moderation, public export, name/batch claiming, meet auto-approval); 3 existing authorization behaviors passed.
+- Ruling: retain verified exact-email linking for unclaimed accounts, but remove public name/batch linking. New Meet registrations remain saved with pending profiles so event participation is not lost while awaiting approval.
+- Ruling: public responses explicitly allow known profile fields; omit structured contact and unknown imported fields. Version the Worker cache key and replace the unchanged shortcut with sanitized payloads. Existing clients/cache stores need the documented release update.
+- Additional regression found: admin merge orphaned Meet references. Test failed with old member_id; database batch now preserves ownership and registration linkage together.
+- Verification: 18/18 tests passed; syntax check and dry-run build passed. Core own-profile/DP edits, all-batch reads, role removal, expiry/logout, and admin review/linking are covered. Production-schema verification remains pending from Task 1.
+- Task 2 review: independent reviewer found no actionable correctness/security regressions. Nonblocking coverage follow-ups: explicit failed-merge rollback and preseeded legacy-cache upgrade tests. Successful merge and fresh/cached sanitized response paths are covered; production schema remains unverified.
+- Task 2 complete locally: permission/privacy/identity fixes and API compatibility notes are ready. Next milestone is gallery publication and batch-photo management.
