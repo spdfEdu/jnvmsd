@@ -32,7 +32,7 @@ const Footer = () => {
       <div className="max-w-[1580px] w-full h-full mx-auto px-6 md:px-20 py-16 relative">
         {/* Decorative Globe GIF */}
         <img
-          src="/images/whitecirculerglobe.gif"
+          src={`${import.meta.env.BASE_URL}images/whitecirculerglobe.gif`}
           alt=""
           className="hidden lg:flex absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/4 pointer-events-none select-none z-0 opacity-80"
         />

@@ -5,10 +5,11 @@ const Home = () => {
     <div className="w-full min-h-screen">
       <BackgroundVideo />
       <section className="home">
-        <div className="w-full bg-[url('/images/schoolimg.png')] bg-center bg-no-repeat bg-cover border border-amber-100/60 h-[75vh] rounded-3xl relative">
+        <div className="w-full bg-center bg-no-repeat bg-cover border border-amber-100/60 h-[75vh] rounded-3xl relative"
+          style={{ backgroundImage: `url(${import.meta.env.BASE_URL}images/schoolimg.png)` }}>
           <div className="absolute flex flex-col left-5 bottom-5">
             <img
-              src="/images/circulerlogo.png"
+              src={`${import.meta.env.BASE_URL}images/circulerlogo.png`}
               alt=""
               className="lg:w-[10vw] w-[30vw]"
             />
@@ -23,7 +24,7 @@ const Home = () => {
             </span>
           </div>
           <img
-            src="/images/houseflag.png"
+            src={`${import.meta.env.BASE_URL}images/houseflag.png`}
             alt=""
             className="absolute top-5 right-5 w-[400px]"
           />
@@ -118,7 +119,7 @@ const Home = () => {
             <div class="lg:col-span-5">
               <div class="relative rounded-2xl overflow-hidden border border-white/15 aspect-[4/3] flex items-center justify-center">
                 <img
-                  src="/images/schoolfrontimg.jpg"
+                  src={`${import.meta.env.BASE_URL}images/schoolfrontimg.jpg`}
                   alt="JNV Campus"
                   class="absolute inset-0 w-full h-full object-cover opacity-40"
                 />
@@ -146,7 +147,7 @@ const Home = () => {
           <div className="relative rounded-2xl overflow-hidden min-h-[480px] group">
             {/* Background Image */}
             <img
-              src="/images/batch2018.jpg"
+              src={`${import.meta.env.BASE_URL}images/batch2018.jpg`}
               alt=""
               className="absolute left-0 top-0 inset-1 z-1 w-full h-full object-cover beat"
             />
@@ -180,7 +181,7 @@ const Home = () => {
           </center>
 
           <center className="w-full h-full">
-            <img src="/images/Alapan.jpg" alt="" className="" />
+            <img src={`${import.meta.env.BASE_URL}images/Alapan.jpg`} alt="" className="" />
           </center>
           <center className="text-[clamp(15px,7vw,30px)] font-bold">
             JNV MURSHIDABAD ALUMNI MEET 2026

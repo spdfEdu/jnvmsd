@@ -26,7 +26,7 @@ const Navbar = () => {
         {/* Logo */}
         <Link to="/homepage" onClick={closeMenu}>
           <img
-            src="/images/logo.png"
+            src={`${import.meta.env.BASE_URL}images/logo.png`}
             alt="Logo"
             className="h-14 w-auto object-contain"
           />

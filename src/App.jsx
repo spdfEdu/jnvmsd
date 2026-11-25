@@ -15,7 +15,7 @@ import BackgroundVideo from "./components/layout/BackgroundVideo";
 
 const App = () => {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/jnvmsd">
       <div className="flex flex-col min-h-screen">
         
         <Navbar />
