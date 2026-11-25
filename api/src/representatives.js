@@ -1,0 +1,9 @@
+import {readJson} from './http.js';
+/** List active representatives without contacts and restrict assignments to administrators. */
+export async function representativesRoute(req,url,env,h){const path=url.pathname.replace(/\/+$/,''),method=req.method;
+ if(path==='/api/representatives'&&method==='GET'){const {results}=await env.DB.prepare("SELECT r.batch,m.id AS member_id,m.name,m.photo FROM representatives r JOIN members m ON m.id=r.member_id JOIN roles x ON x.email=m.email WHERE x.role='core' AND m.status='approved' ORDER BY r.batch,m.name").all();return h.jsonRes({representatives:results.map(r=>({...r,photo:r.photo?url.origin+'/api/photo/'+r.photo:null}))},200,{'Cache-Control':'no-store'});}
+ if(path!=='/api/admin/representatives')return null;await h.requireAdmin(req,env);
+ if(method==='GET')return h.jsonRes({representatives:(await env.DB.prepare('SELECT * FROM representatives ORDER BY batch').all()).results},200,{'Cache-Control':'private, no-store'});
+ const b=await readJson(req,h.HttpError);if(!Number.isInteger(b.batch)||b.batch<2008||b.batch>2100||typeof b.member_id!=='string')throw new h.HttpError(400,'Choose a batch and member');
+ if(method==='DELETE'){await env.DB.prepare('DELETE FROM representatives WHERE batch=? AND member_id=?').bind(b.batch,b.member_id).run();return h.jsonRes({ok:true});}
+ if(method==='POST'){const r=await env.DB.prepare("INSERT OR IGNORE INTO representatives(batch,member_id) SELECT ?,m.id FROM members m JOIN roles r ON r.email=m.email WHERE m.id=? AND m.status='approved' AND r.role='core'").bind(b.batch,b.member_id).run();if(!r.meta.changes&&!await env.DB.prepare('SELECT member_id FROM representatives WHERE batch=? AND member_id=?').bind(b.batch,b.member_id).first())throw new h.HttpError(400,'Choose an approved core member');return h.jsonRes({ok:true});}throw new h.HttpError(405,'Method not allowed');}

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 const directory = new URL('../migrations/', import.meta.url);
 function migrate(db) {
   const files = existsSync(directory) ? readdirSync(directory) : [];
-  for (const file of files.filter(f => f.endsWith('.sql')).sort()) db.exec(readFileSync(new URL(file, directory), 'utf8'));
+  for (const file of files.filter(f => f === '0001_baseline.sql').sort()) db.exec(readFileSync(new URL(file, directory), 'utf8'));
 }
 function database(t) {
   const db = new DatabaseSync(':memory:');

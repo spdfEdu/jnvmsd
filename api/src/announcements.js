@@ -1,0 +1,9 @@
+import {readJson} from './http.js';
+/** Publish announcements through administrator-only writes while keeping drafts private. */
+export async function announcementsRoute(req,url,env,h){const path=url.pathname.replace(/\/+$/,''),method=req.method;
+ if(path==='/api/announcements'&&method==='GET')return h.jsonRes({announcements:(await env.DB.prepare("SELECT * FROM announcements WHERE status='published' ORDER BY updated_at DESC LIMIT 100").all()).results},200,{'Cache-Control':'no-store'});
+ if(!path.startsWith('/api/admin/announcements'))return null;await h.requireAdmin(req,env);
+ if(path==='/api/admin/announcements'&&method==='GET')return h.jsonRes({announcements:(await env.DB.prepare('SELECT * FROM announcements ORDER BY updated_at DESC LIMIT 100').all()).results},200,{'Cache-Control':'private, no-store'});
+ const m=path.match(/^\/api\/admin\/announcements(?:\/([\w-]+))?$/);
+ if(m&&(method==='POST'&&!m[1]||method==='PUT'&&m[1])){const b=await readJson(req,h.HttpError),title=h.text(b.title,120),body=h.text(b.body,3000),status=b.status||'draft';if(title.length<2||!body||!['draft','published'].includes(status))throw new h.HttpError(400,'Provide a title, body, and valid publication status');if(m[1]&&!await env.DB.prepare('SELECT id FROM announcements WHERE id=?').bind(m[1]).first())throw new h.HttpError(404,'Announcement not found');const id=m[1]||crypto.randomUUID();await env.DB.prepare('INSERT INTO announcements(id,title,body,status,created_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,body=excluded.body,status=excluded.status,updated_at=excluded.updated_at').bind(id,title,body,status,h.now(),h.now()).run();return h.jsonRes({announcement:{id,title,body,status}},m[1]?200:201);}
+ if(m?.[1]&&method==='DELETE'){await env.DB.prepare('DELETE FROM announcements WHERE id=?').bind(m[1]).run();return h.jsonRes({ok:true});}throw new h.HttpError(405,'Method not allowed');}

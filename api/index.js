@@ -1,3 +1,9 @@
+import { visitsRoute } from './src/visits.js';
+import { representativesRoute } from './src/representatives.js';
+import { announcementsRoute } from './src/announcements.js';
+import { contactRoute } from './src/contact.js';
+import { eventsRoute } from './src/events.js';
+import { galleryRoute, cleanupGallery, removeGallery } from './src/gallery.js';
 // JNV MSD alumni API (Cloudflare Worker + D1)
 // Public pages read approved data; members edit their own entry; admins approve.
 
@@ -425,8 +431,7 @@ async function touched(env, url, years) {
 
 /** Remove gallery metadata and its backing object. */
 async function dropGalleryPhoto(env, id) {
-  if (env.GALLERY) { try { await env.GALLERY.delete("g/" + id); } catch {} }
-  await env.DB.prepare("DELETE FROM gallery WHERE id = ?").bind(id).run();
+  await removeGallery(env, id);
 }
 
 /** Invalidate sanitized public responses for affected batch years. */
@@ -469,13 +474,14 @@ async function route(req, url, env) {
     for (const e of owners(env)) tags.set(e, "Admin");
     // gallery: every photo shows on its owner's profile, approved ones also join the batch slider
     const gal = (await env.DB.prepare(
-      "SELECT g.id, g.member_id, g.status FROM gallery g JOIN members m ON m.id = g.member_id WHERE m.status = 'approved' AND m.batch = ? ORDER BY g.created_at"
+      "SELECT g.id, g.member_id, g.status FROM gallery g JOIN members m ON m.id = g.member_id WHERE m.status = 'approved' AND g.status = 'approved' AND m.batch = ? ORDER BY g.created_at"
     ).bind(year).all()).results || [];
     const byMember = new Map();
     for (const g of gal) { if (!byMember.has(g.member_id)) byMember.set(g.member_id, []); byMember.get(g.member_id).push(url.origin + "/api/gallery/photo/" + g.id); }
+    const historic = (await env.DB.prepare('SELECT id FROM batch_photos WHERE batch=? ORDER BY created_at').bind(year).all()).results;
     const slides = gal.filter((g) => g.status === "approved").map((g) => url.origin + "/api/gallery/photo/" + g.id);
     const res = jsonRes(
-      { batch: year, ver, count: results.length, slides, entries: results.map((r) => entryOf(r, level, url.origin, tags.get(String(r.email).toLowerCase()), byMember.get(r.id))) },
+      { batch: year, ver, count: results.length, slides: [...slides, ...historic.map(p => url.origin + "/api/gallery/photo/" + p.id)], entries: results.map((r) => entryOf(r, level, url.origin, tags.get(String(r.email).toLowerCase()), byMember.get(r.id))) },
       200,
       { "Cache-Control": level === "full" ? "private, no-store" : "public, max-age=60" }
     );
@@ -597,6 +603,8 @@ async function route(req, url, env) {
   }
   // signed in: save or update my response (the Gmail comes from the verified token, never from the request)
   if (path === "/api/meet/me" && method === "PUT") {
+    const event = await env.DB.prepare("SELECT status,registration_deadline FROM events WHERE id='meet2026'").first();
+    if (!event || event.status !== 'published' || event.registration_deadline && Date.parse(event.registration_deadline) <= Date.now()) throw new HttpError(409, 'Registration is closed');
     const user = await requireUser(req, env);
     let body;
     try { body = await req.json(); } catch { throw new HttpError(400, "Send JSON"); }
@@ -686,87 +694,14 @@ async function route(req, url, env) {
     return jsonRes({ ok: true });
   }
 
-  // gallery photo (public: every uploaded photo shows on its owner's public profile)
-  if (method === "GET" && (m = path.match(/^\/api\/gallery\/photo\/([0-9a-f-]{36})$/))) {
-    if (!env.GALLERY) throw new HttpError(503, "Gallery storage is not set up");
-    const got = await env.GALLERY.getWithMetadata("g/" + m[1], { type: "stream" });
-    if (!got || !got.value) throw new HttpError(404, "Not found");
-    return new Response(got.value, { headers: { "Content-Type": (got.metadata && got.metadata.ct) || "image/webp", "Cache-Control": "public, max-age=31536000, immutable" } });
+  for (const handler of [contactRoute, announcementsRoute, representativesRoute, visitsRoute]) {
+    const response = await handler(req, url, env, { jsonRes, requireAdmin, HttpError, now, text, sha256Hex });
+    if (response) return response;
   }
-
-  // my gallery: up to 5 photos
-  if (path === "/api/me/gallery" && method === "GET") {
-    const user = await requireUser(req, env);
-    const mem = await findMember(env, user);
-    if (!mem) return jsonRes({ photos: [], max: MAX_GALLERY }, 200, { "Cache-Control": "no-store" });
-    const { results } = await env.DB.prepare("SELECT id, created_at FROM gallery WHERE member_id = ? ORDER BY created_at").bind(mem.id).all();
-    return jsonRes({ max: MAX_GALLERY, photos: results.map((g) => ({ id: g.id, url: url.origin + "/api/gallery/photo/" + g.id, created_at: g.created_at })) }, 200, { "Cache-Control": "no-store" });
-  }
-  if (path === "/api/me/gallery" && method === "POST") {
-    const user = await requireUser(req, env);
-    const mem = await findMember(env, user);
-    if (!mem || mem.status !== "approved") throw new HttpError(403, "You can add photos once your profile is approved");
-    if (!env.GALLERY) throw new HttpError(503, "Gallery storage is not set up");
-    const have = await env.DB.prepare("SELECT count(*) AS n FROM gallery WHERE member_id = ?").bind(mem.id).first();
-    if (have.n >= MAX_GALLERY) throw new HttpError(409, "You can add up to " + MAX_GALLERY + " photos. Delete one to add another.");
-    const bytes = await req.arrayBuffer();
-    if (!bytes.byteLength) throw new HttpError(400, "No photo received");
-    if (bytes.byteLength > MAX_GALLERY_BYTES) throw new HttpError(413, "Photo must be under 200 KB");
-    const type = imageType(bytes);
-    if (!type) throw new HttpError(415, "Use a JPG, PNG or WebP photo");
-    const id = crypto.randomUUID();
-    await env.GALLERY.put("g/" + id, bytes, { metadata: { ct: type[0] } });
-    await env.DB.prepare("INSERT INTO gallery (id, member_id, status, bytes, created_at) VALUES (?, ?, 'new', ?, ?)").bind(id, mem.id, bytes.byteLength, now()).run();
-    await touched(env, url, [mem.batch]);
-    return jsonRes({ ok: true, id, url: url.origin + "/api/gallery/photo/" + id });
-  }
-  if (method === "DELETE" && (m = path.match(/^\/api\/me\/gallery\/([0-9a-f-]{36})$/))) {
-    const user = await requireUser(req, env);
-    const mem = await findMember(env, user);
-    const g = mem && await env.DB.prepare("SELECT id FROM gallery WHERE id = ? AND member_id = ?").bind(m[1], mem.id).first();
-    if (!g) throw new HttpError(404, "Not found");
-    await dropGalleryPhoto(env, g.id);
-    await touched(env, url, [mem.batch]);
-    return jsonRes({ ok: true });
-  }
-
-  // review: admins moderate; core members may only read
-  if (path.startsWith("/api/review/gallery")) {
-    const user = await requireUser(req, env);
-    const role = await roleOf(env, user);
-    if (!canSeeContacts(role)) throw new HttpError(403, "Only admins and core members can view photo review");
-    if (method !== "GET" && !isAdminRole(role)) throw new HttpError(403, "Only admins can moderate photos");
-    if (path === "/api/review/gallery" && method === "GET") {
-      const st = url.searchParams.get("status");
-      const yr = Number(url.searchParams.get("batch")) || 0;
-      const where = [], args = [];
-      if (["new", "approved", "rejected"].includes(st)) { where.push("g.status = ?"); args.push(st); }
-      if (yr) { where.push("m.batch = ?"); args.push(yr); }
-      const { results } = await env.DB.prepare(
-        "SELECT g.id, g.status, g.created_at, m.id AS member_id, m.name, m.batch FROM gallery g JOIN members m ON m.id = g.member_id" +
-        (where.length ? " WHERE " + where.join(" AND ") : "") + " ORDER BY g.created_at DESC LIMIT 400"
-      ).bind(...args).all();
-      const c = (await env.DB.prepare("SELECT status, count(*) AS n FROM gallery GROUP BY status").all()).results || [];
-      const counts = { new: 0, approved: 0, rejected: 0 };
-      for (const r of c) counts[r.status] = r.n;
-      return jsonRes({ counts, photos: results.map((g) => ({ ...g, url: url.origin + "/api/gallery/photo/" + g.id })) }, 200, { "Cache-Control": "no-store" });
-    }
-    if ((m = path.match(/^\/api\/review\/gallery\/([0-9a-f-]{36})\/(approve|reject)$/)) && method === "POST") {
-      const g = await env.DB.prepare("SELECT g.id, m.batch FROM gallery g JOIN members m ON m.id = g.member_id WHERE g.id = ?").bind(m[1]).first();
-      if (!g) throw new HttpError(404, "Not found");
-      await env.DB.prepare("UPDATE gallery SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?").bind(m[2] === "approve" ? "approved" : "rejected", user.email, now(), g.id).run();
-      await touched(env, url, [g.batch]);
-      return jsonRes({ ok: true });
-    }
-    if ((m = path.match(/^\/api\/review\/gallery\/([0-9a-f-]{36})$/)) && method === "DELETE") {
-      if (!isAdminRole(role)) throw new HttpError(403, "Only admins can delete photos");
-      const g = await env.DB.prepare("SELECT g.id, m.batch FROM gallery g JOIN members m ON m.id = g.member_id WHERE g.id = ?").bind(m[1]).first();
-      if (!g) throw new HttpError(404, "Not found");
-      await dropGalleryPhoto(env, g.id);
-      await touched(env, url, [g.batch]);
-      return jsonRes({ ok: true });
-    }
-  }
+  const eventsResponse = await eventsRoute(req, url, env, { jsonRes, requireUser, requireAdmin, roleOf, canSeeContacts, now, text, HttpError, phoneOf, route });
+  if (eventsResponse) return eventsResponse;
+  const galleryResponse = await galleryRoute(req, url, env, { jsonRes, requireUser, requireAdmin, roleOf, isAdminRole, canSeeContacts, findMember, touched, now, text, HttpError, imageType });
+  if (galleryResponse) return galleryResponse;
 
   // admin
   if (path.startsWith("/api/admin/")) {
@@ -925,6 +860,7 @@ async function route(req, url, env) {
 export default {
   /** Run the configured reminder job without blocking the scheduled invocation. */
   async scheduled(event, env, ctx) {
+    ctx.waitUntil(cleanupGallery(env));
     ctx.waitUntil(notifyPending(env).then((r) => console.log("pending mail:", JSON.stringify(r))).catch((e) => console.error("pending mail error", e)));
   },
   /** Apply CORS and convert known failures into stable HTTP responses. */

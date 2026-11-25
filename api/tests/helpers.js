@@ -7,6 +7,7 @@ import { Miniflare } from 'miniflare';
 export async function runtime(t) {
   const mf = new Miniflare({
     modules: true,
+    modulesRules: [{ type: 'ESModule', include: ['**/*.js'] }],
     scriptPath: fileURLToPath(new URL('../index.js', import.meta.url)),
     compatibilityDate: '2026-01-01',
     d1Databases: ['DB'],
