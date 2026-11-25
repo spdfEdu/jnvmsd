@@ -193,3 +193,30 @@ footer{
 .mt-8 {
   margin-top: 32px;
 }
+/* Alumni member services retain the school's navy and warm accent palette. */
+.alumni-page { padding: 3rem 1.5rem; max-width: 1180px; margin: auto; display: grid; gap: 1.5rem; }
+.alumni-page header { max-width: 760px; }
+.alumni-page h1 { font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 800; line-height: 1.15; margin: .5rem 0 1rem; }
+.alumni-page h2 { font-size: 1.5rem; font-weight: 700; }
+.alumni-page h3 { font-size: 1.15rem; font-weight: 700; }
+.alumni-page p { line-height: 1.7; overflow-wrap: anywhere; }
+.alumni-eyebrow { color: #f5d58b; text-transform: uppercase; letter-spacing: .12em; font-size: .85rem; }
+.alumni-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 1.25rem; }
+.alumni-card { background: #202537; border: 1px solid #4a5268; border-radius: 16px; padding: 1.5rem; display: grid; gap: 1rem; align-content: start; min-width: 0; }
+.alumni-field { display: grid; gap: .45rem; margin: .5rem 0; font-size: 1rem; min-width: 0; }
+.alumni-field input, .alumni-field select, .alumni-field textarea { width: 100%; min-width: 0; border: 1px solid #64708a; border-radius: 8px; background: #141a2a; color: #fff; padding: .75rem; color-scheme: dark; }
+.alumni-field input:focus, .alumni-field select:focus, .alumni-field textarea:focus { outline: 2px solid #f5d58b; outline-offset: 2px; }
+.alumni-page button, .alumni-button { background: #f5d58b; color: #172038; padding: .7rem 1rem; border: 1px solid transparent; border-radius: 8px; font-weight: 700; width: fit-content; text-align: center; }
+.alumni-page button.secondary { background: transparent; color: #fff; border-color: #8993aa; }
+.alumni-page button.danger { background: #4a2432; border-color: #c18a9a; color: #ffe4e9; }
+.alumni-page button:disabled { opacity: .55; cursor: not-allowed; }
+.alumni-toolbar, .alumni-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.alumni-notice { border-left: 3px solid #f5d58b; background: #202537; padding: 1rem; border-radius: 4px; }
+.alumni-photo { width: 100%; max-height: 360px; object-fit: contain; border-radius: 10px; background: #121624; }
+.alumni-avatar { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; }
+.alumni-table { overflow: auto; max-width: 100%; border: 1px solid #64708a; border-radius: 12px; }
+.alumni-table table { border-collapse: collapse; width: 100%; }
+.alumni-table th,.alumni-table td { padding: .8rem; text-align: left; border-bottom: 1px solid #4a5268; white-space: nowrap; }
+.alumni-honeypot { display: none; }
+.alumni-account-nav { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: flex-end; padding: 1.2rem 1.5rem 0; font-size: .95rem; color: #f5d58b; }
+@media(max-width: 600px) { .alumni-page { padding: 2rem 1rem; } .alumni-card { padding: 1rem; } .alumni-page button { min-height: 44px; } }

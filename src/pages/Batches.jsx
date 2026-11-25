@@ -1,10 +1,5 @@
-/** Render the batches view. */
-const Batches = () => {
-  return (
-    <div className="px-8 py-10">
-      <h1 className="text-3xl font-bold text-gray-800">Batches</h1>
-    </div>
-  );
-};
-
-export default Batches;
+import { Link } from 'react-router-dom';
+import { useResource } from '../lib/useResource';
+import { Page,Status } from '../components/alumni/UI';
+/** Show available batches and the currently assigned core-member representatives. */
+export default function Batches(){const batches=useResource('/api/meet/batches'),reps=useResource('/api/representatives');return <Page title="Our batches" intro="One school. Many generations. Stay connected through your batch."><Status resource={batches} empty={!batches.data?.batches?.length}/><div className="alumni-grid">{batches.data?.batches?.map(row=><Link className="alumni-card" key={row.batch} to={'/directory?batch='+row.batch}><h2>Batch {row.batch}</h2><p>{row.n} alumni</p></Link>)}</div><h2>Batch representatives</h2><Status resource={reps} empty={!reps.data?.representatives?.length}/><div className="alumni-grid">{reps.data?.representatives?.map(row=><article className="alumni-card" key={row.batch+row.member_id}>{row.photo&&<img className="alumni-avatar" src={row.photo} alt={row.name}/>}<h3>{row.name}</h3><p>Batch {row.batch} · Core member</p></article>)}</div></Page>;}

@@ -1,10 +1,10 @@
-/** Render the contact view. */
-const Contact = () => {
-  return (
-    <div className="px-8 py-10">
-      <h1 className="text-3xl font-bold text-gray-800">Contact</h1>
-    </div>
-  );
-};
-
-export default Contact;
+import {useEffect,useRef,useState} from 'react';
+import {api} from '../lib/api';
+import {Page,Field} from '../components/alumni/UI';
+/** Mount Cloudflare's verification widget without sending its secret key to the browser. */
+function Challenge({onToken}){const target=useRef(null);useEffect(()=>{const key=import.meta.env.VITE_TURNSTILE_SITE_KEY;if(!key)return;let widget,active=true;const render=()=>{if(active&&target.current&&window.turnstile)widget=window.turnstile.render(target.current,{sitekey:key,callback:onToken,'expired-callback':()=>onToken('')});};let script=document.querySelector('script[data-turnstile]');if(window.turnstile)render();else{if(!script){script=document.createElement('script');script.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';script.async=true;script.dataset.turnstile='true';document.head.appendChild(script);}script.addEventListener('load',render);}return()=>{active=false;script?.removeEventListener('load',render);if(widget!==undefined)window.turnstile?.remove(widget);};},[onToken]);return <div ref={target}/>;}
+/** Submit a private, rate-limited contact message with server-verified anti-spam protection. */
+export default function Contact(){const [data,setData]=useState({name:'',email:'',message:'',website:''}),[token,setToken]=useState(''),[notice,setNotice]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[version,setVersion]=useState(0);const configured=import.meta.env.DEV||Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY);
+ /** Submit the message and reset the single-use verification token after every attempt. */
+ async function submit(e){e.preventDefault();setBusy(true);setError('');try{await api('/api/contact',{method:'POST',body:{...data,challenge_token:token}});setNotice('Your message has been received. Thank you for reaching out.');setData({name:'',email:'',message:'',website:''});}catch(err){setError(err.message);}finally{setBusy(false);setToken('');setVersion(v=>v+1);}}
+ return <Page title="Contact the alumni team" intro="Questions, suggestions, or help reconnecting? Send the team a message."><form className="alumni-card" onSubmit={submit}><Field label="Your name" required maxLength={80} value={data.name} onChange={name=>setData(old=>({...old,name}))}/><Field label="Email" required type="email" maxLength={160} value={data.email} onChange={email=>setData(old=>({...old,email}))}/><Field label="Message" multiline required minLength={10} maxLength={3000} value={data.message} onChange={message=>setData(old=>({...old,message}))}/><label className="alumni-honeypot" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={data.website} onChange={e=>setData(old=>({...old,website:e.target.value}))}/></label><Challenge key={version} onToken={setToken}/>{!configured&&<p>Messaging is being connected. Please check back soon.</p>}<button disabled={busy||!configured||Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY)&&!token}>{busy?'Sending…':'Send message'}</button>{notice&&<p role="status">{notice}</p>}{error&&<p role="alert">{error}</p>}</form></Page>;}

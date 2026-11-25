@@ -83,6 +83,6 @@ No reconciliation migration is supplied yet because the actual database schema i
 - [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
 - [Miniflare D1 testing](https://developers.cloudflare.com/workers/testing/miniflare/storage/d1/)
 
-Direct dependency versions and the dependency tree are pinned in package.json and package-lock.json. Installation succeeded on D:. Eighteen tests pass, local migration and repeat application succeed, and the dry-run build and live local health/directory checks pass. Production compatibility and real Google sign-in remain unverified.
+Direct dependency versions and the dependency tree are pinned in package.json and package-lock.json. Installation succeeded on D:. Thirty-one tests pass, local migration and repeat application succeed, and the dry-run build and live local health/directory checks pass. Production compatibility and real Google sign-in remain unverified.
 
 Without installing dependencies, `npm run test:schema` executes the baseline against Node's built-in SQLite. These tests cover fresh tables, synthetic restoration, unique identities, and safe refusal to reapply to an existing schema. They do not substitute for Miniflare/D1 integration tests or live-data migration rehearsal. Node emits its experimental SQLite warning on the installed version.

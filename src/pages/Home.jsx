@@ -1,10 +1,11 @@
+import CommunityNews from "../components/alumni/CommunityNews";
 import BackgroundVideo from "../components/layout/BackgroundVideo";
 
 /** Render the home view. */
 const Home = () => {
   return (
     <div className="w-full min-h-screen">
-      <BackgroundVideo />
+      <BackgroundVideo /><CommunityNews />
       <section className="home">
         <div className="w-full bg-center bg-no-repeat bg-cover border border-amber-100/60 h-[75vh] rounded-3xl relative"
           style={{ backgroundImage: `url(${import.meta.env.BASE_URL}images/schoolimg.png)` }}>
@@ -32,14 +33,14 @@ const Home = () => {
         </div>
 
         {/* 2nd section */}
-        <div class="max-w-7xl mx-auto  py-16 text-white">
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-            <div class="lg:col-span-7 space-y-6">
-              <h2 class="firjar text-3xl sm:text-4xl font-bold tracking-tight">
+        <div className="max-w-7xl mx-auto  py-16 text-white">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+            <div className="lg:col-span-7 space-y-6">
+              <h2 className="firjar text-3xl sm:text-4xl font-bold tracking-tight">
                 "Once a Navodayan, always a Navodayan."
               </h2>
 
-              <div class="space-y-4 text-gray-300 text-base sm:text-lg leading-relaxed">
+              <div className="space-y-4 text-gray-300 text-base sm:text-lg leading-relaxed">
                 <p>Same classrooms, same dormitories, same dreams.</p>
                 <p>
                   Wherever life has taken us, the bond we formed at JNV stays
@@ -48,10 +49,10 @@ const Home = () => {
                 <p>This is the place to find each other again.</p>
               </div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 p-6 rounded-xl bg-amber-100/10 border border-white/15 mt-8">
-                <div class="flex items-start gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 p-6 rounded-xl bg-amber-100/10 border border-white/15 mt-8">
+                <div className="flex items-start gap-4">
                   <svg
-                    class="w-8 h-8 text-gray-300 shrink-0 mt-1"
+                    className="w-8 h-8 text-gray-300 shrink-0 mt-1"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1.75"
@@ -64,16 +65,16 @@ const Home = () => {
                     />
                   </svg>
                   <div>
-                    <div class="text-2xl font-bold">17</div>
-                    <p class="text-xs text-gray-400 mt-1 leading-snug">
+                    <div className="text-2xl font-bold">17</div>
+                    <p className="text-xs text-gray-400 mt-1 leading-snug">
                       Batches passed till now
                     </p>
                   </div>
                 </div>
 
-                <div class="flex items-start gap-4">
+                <div className="flex items-start gap-4">
                   <svg
-                    class="w-8 h-8 text-gray-300 shrink-0 mt-1"
+                    className="w-8 h-8 text-gray-300 shrink-0 mt-1"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1.75"
@@ -86,16 +87,16 @@ const Home = () => {
                     />
                   </svg>
                   <div>
-                    <div class="text-2xl font-bold">650</div>
-                    <p class="text-xs text-gray-400 mt-1 leading-snug">
+                    <div className="text-2xl font-bold">650</div>
+                    <p className="text-xs text-gray-400 mt-1 leading-snug">
                       Navodaya Vidyalayas across India
                     </p>
                   </div>
                 </div>
 
-                <div class="flex items-start gap-4">
+                <div className="flex items-start gap-4">
                   <svg
-                    class="w-8 h-8 text-gray-300 shrink-0 mt-1"
+                    className="w-8 h-8 text-gray-300 shrink-0 mt-1"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1.75"
@@ -108,8 +109,8 @@ const Home = () => {
                     />
                   </svg>
                   <div>
-                    <div class="text-2xl font-bold">850</div>
-                    <p class="text-xs text-gray-400 mt-1 leading-snug">
+                    <div className="text-2xl font-bold">850</div>
+                    <p className="text-xs text-gray-400 mt-1 leading-snug">
                       Alumnis from our Navodaya
                     </p>
                   </div>
@@ -117,18 +118,18 @@ const Home = () => {
               </div>
             </div>
 
-            <div class="lg:col-span-5">
-              <div class="relative rounded-2xl overflow-hidden border border-white/15 aspect-[4/3] flex items-center justify-center">
+            <div className="lg:col-span-5">
+              <div className="relative rounded-2xl overflow-hidden border border-white/15 aspect-[4/3] flex items-center justify-center">
                 <img
                   src={`${import.meta.env.BASE_URL}images/schoolfrontimg.jpg`}
                   alt="JNV Campus"
-                  class="absolute inset-0 w-full h-full object-cover opacity-40"
+                  className="absolute inset-0 w-full h-full object-cover opacity-40"
                 />
-                <div class="relative z-10 text-center">
-                  <span class="block text-xs sm:text-sm font-bold tracking-[0.2em] uppercase text-gray-200">
+                <div className="relative z-10 text-center">
+                  <span className="block text-xs sm:text-sm font-bold tracking-[0.2em] uppercase text-gray-200">
                     SINCE
                   </span>
-                  <span class="block text-4xl sm:text-5xl font-extrabold mt-2 tracking-wide">
+                  <span className="block text-4xl sm:text-5xl font-extrabold mt-2 tracking-wide">
                     2003
                   </span>
                 </div>

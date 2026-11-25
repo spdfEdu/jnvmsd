@@ -52,7 +52,7 @@ export async function galleryRoute(req, url, env, h) {
   }
   if(path==='/api/gallery'&&method==='GET'){
     const batch=Number(url.searchParams.get('batch'))||null;
-    const {results}=await env.DB.prepare("SELECT g.id,m.batch,g.caption,g.created_at FROM gallery g JOIN members m ON m.id=g.member_id WHERE g.status='approved' AND m.status='approved' AND (? IS NULL OR m.batch=?) UNION ALL SELECT id,batch,caption,created_at FROM batch_photos WHERE (? IS NULL OR batch=?) ORDER BY created_at DESC LIMIT 500").bind(batch,batch,batch,batch).all();
+    const {results}=await env.DB.prepare("SELECT g.id,m.batch,g.caption,g.created_at,'member' AS source FROM gallery g JOIN members m ON m.id=g.member_id WHERE g.status='approved' AND m.status='approved' AND (? IS NULL OR m.batch=?) UNION ALL SELECT id,batch,caption,created_at,'batch' AS source FROM batch_photos WHERE (? IS NULL OR batch=?) ORDER BY created_at DESC LIMIT 500").bind(batch,batch,batch,batch).all();
     return jsonRes({photos:results.map(p=>({...p,url:url.origin+'/api/gallery/photo/'+p.id}))},200,{'Cache-Control':'no-store'});
   }
   if(path==='/api/me/gallery'&&method==='GET'){

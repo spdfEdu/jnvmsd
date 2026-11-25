@@ -1,10 +1,6 @@
-/** Render the directory view. */
-const Directory = () => {
-  return (
-    <div className="px-8 py-10">
-      <h1 className="text-3xl font-bold text-gray-800">Directory</h1>
-    </div>
-  );
-};
-
-export default Directory;
+import { useState } from 'react';
+import { useAuth } from '../auth/useAuth';
+import { useResource } from '../lib/useResource';
+import { Page,Field,Status } from '../components/alumni/UI';
+/** Browse approved batch profiles; contact details appear only for authorized organizers. */
+export default function Directory({donors=false}){const {account}=useAuth();const [batch,setBatch]=useState(new URLSearchParams(window.location.search).get('batch')||'2015'),[search,setSearch]=useState('');const full=account?.isAdmin||account?.isCore;const resource=useResource(/^\d{4}$/.test(batch)?`/api/batch/${batch}?level=${full?'full':'public'}`:null);const entries=(resource.data?.entries||[]).filter(row=>(!donors||row.BloodGroup)&&String(row.Name).toLowerCase().includes(search.toLowerCase()));return <Page title={donors?'Blood donors':'Alumni directory'} intro="Find classmates and reconnect with your batch."><div className="alumni-toolbar"><Field label="Batch year" type="number" min={2008} max={2100} value={batch} onChange={setBatch}/><Field label="Search by name" value={search} onChange={setSearch}/></div>{full?<p className="alumni-notice">Contact details are visible to you as an authorized organizer.</p>:<p>Private contact details are available to administrators and core members.</p>}<Status resource={resource} empty={!entries.length}/><div className="alumni-grid">{entries.map((row,index)=><article className="alumni-card" key={row.Name+index}>{(row.photo||row.gpic)&&<img className="alumni-avatar" src={row.photo||row.gpic} alt={row.Name} loading="lazy"/>}<h2>{row.Name}</h2><p>Batch {row.Batch} {row.tag&&'· '+row.tag}</p><p>{row.Occupation||row.CurrentStatus} {row.Company&&'· '+row.Company}</p>{row.BloodGroup&&<p>Blood group: {row.BloodGroup}</p>}<p>{row.Bio}</p>{full&&<><p>{row.Phone}</p><p>{row.Phone2}</p><p>{row.EmailId}</p><p>{row.Address}</p></>}</article>)}</div></Page>;}

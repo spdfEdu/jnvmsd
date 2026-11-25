@@ -1,10 +1,3 @@
-/** Render the blood donors view. */
-const BloodDonors = () => {
-  return (
-    <div className="px-8 py-10">
-      <h1 className="text-3xl font-bold text-gray-800">Blood Donors</h1>
-    </div>
-  );
-};
-
-export default BloodDonors;
+import Directory from './Directory';
+/** Reuse the protected directory with a blood-group filter for donor discovery. */
+export default function BloodDonors(){return <Directory donors/>;}

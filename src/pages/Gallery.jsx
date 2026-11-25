@@ -1,10 +1,5 @@
-/** Render the gallery view. */
-const Gallery = () => {
-  return (
-    <div className="px-8 py-10">
-      <h1 className="text-3xl font-bold text-gray-800">Gallery</h1>
-    </div>
-  );
-};
-
-export default Gallery;
+import { useState } from 'react';
+import { useResource } from '../lib/useResource';
+import { Page,Field,Status } from '../components/alumni/UI';
+/** Display only approved member photos and administrator-published historical batch photos. */
+export default function Gallery(){const [batch,setBatch]=useState('');const resource=useResource('/api/gallery'+(batch?'?batch='+encodeURIComponent(batch):''));return <Page title="School memories" intro="Photographs from our batches, reunions, and shared years at JNV."><Field label="Filter by batch year" type="number" min={2008} max={2100} value={batch} onChange={setBatch}/><Status resource={resource} empty={!resource.data?.photos?.length}/><div className="alumni-grid">{resource.data?.photos?.map(photo=><figure className="alumni-card" key={photo.id}><img className="alumni-photo" src={photo.url} alt={photo.caption||'Batch '+photo.batch+' photograph'} loading="lazy"/><figcaption>{photo.caption||'School memories'} · Batch {photo.batch}</figcaption></figure>)}</div></Page>;}

@@ -24,6 +24,7 @@ const Footer = () => {
     { name: "YouTube", href: "https://youtube.com" },
   ];
 
+  /** Return to the page heading with a smooth scroll. */
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
