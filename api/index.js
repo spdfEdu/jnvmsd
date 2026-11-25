@@ -29,14 +29,18 @@ const MAX_GALLERY_BYTES = 230 * 1024;
 const MAX_PHOTO = 250 * 1024; // photos are stored in the database; the form shrinks them to ~40 KB first
 
 class HttpError extends Error {
+  /** Carry an expected API status without exposing internal exception details. */
   constructor(status, message) { super(message); this.status = status; }
 }
 
 /* ---------- small helpers ---------- */
+/** Return Unix seconds for stored timestamps and expiry comparisons. */
 const now = () => Math.floor(Date.now() / 1000);
+/** Serialize an API response with a consistent JSON content type. */
 const jsonRes = (obj, status = 200, headers = {}) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...headers } });
 
+/** Permit browser access only from explicitly configured frontend origins. */
 function corsHeaders(origin, env) {
   const allowed = String(env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
   const h = {
@@ -51,9 +55,12 @@ function corsHeaders(origin, env) {
 
 /* ---------- Google sign-in check ---------- */
 let jwks = null, jwksAt = 0;
+/** Decode the URL-safe base64 segment used by Google JWTs. */
 const b64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+/** Decode a JWT segment into its JSON payload. */
 const b64uJson = (s) => JSON.parse(new TextDecoder().decode(b64u(s)));
 
+/** Fetch and cache Google public keys, refreshing when the signing key changes. */
 async function googleKey(kid) {
   if (!jwks || Date.now() - jwksAt > 3600e3 || !jwks.some((k) => k.kid === kid)) {
     const r = await fetch("https://www.googleapis.com/oauth2/v3/certs");
@@ -66,6 +73,7 @@ async function googleKey(kid) {
   return crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
 }
 
+/** Verify Google signature, issuer, audience, expiration, and email ownership. */
 async function verifyGoogle(token, env) {
   const parts = String(token || "").split(".");
   if (parts.length !== 3) throw new HttpError(401, "Please sign in");
@@ -82,12 +90,14 @@ async function verifyGoogle(token, env) {
   return { sub: claims.sub, email: String(claims.email).toLowerCase(), name: claims.name || "", picture: claims.picture || "" };
 }
 
+/** Hash bearer tokens so the database never stores the raw session secret. */
 async function sha256Hex(text) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
 // A session token is a long random string made after a Google sign-in. Only its hash is stored.
+/** Resolve an unexpired hashed session and extend its idle lifetime. */
 async function sessionUser(env, token) {
   const hash = await sha256Hex(token);
   const row = await env.DB.prepare("SELECT * FROM sessions WHERE token_hash = ?").bind(hash).first();
@@ -98,6 +108,7 @@ async function sessionUser(env, token) {
   return { sub: row.sub, email: row.email, name: row.name || "", picture: row.picture || "" };
 }
 
+/** Authenticate either a Google ID token or an application session token. */
 async function requireUser(req, env) {
   const h = req.headers.get("Authorization") || "";
   if (!h.startsWith("Bearer ")) throw new HttpError(401, "Please sign in");
@@ -107,15 +118,20 @@ async function requireUser(req, env) {
 }
 
 // Roles: "owner" comes from the ADMIN_EMAILS setting and can never be removed. "admin" and "core" come from the roles table.
+/** Read immutable owner email assignments from environment configuration. */
 const owners = (env) => String(env.ADMIN_EMAILS || "").toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
+/** Resolve current permissions on every request so role removal takes effect immediately. */
 async function roleOf(env, user) {
   if (owners(env).includes(user.email)) return "owner";
   const r = await env.DB.prepare("SELECT role FROM roles WHERE email = ?").bind(user.email).first();
   return r ? r.role : null;
 }
+/** Recognize owner and administrator privileges. */
 const isAdminRole = (role) => role === "owner" || role === "admin";
+/** Allow administrators and core members to read private community details. */
 const canSeeContacts = (role) => isAdminRole(role) || role === "core";
 
+/** Reject requests without an authenticated administrator role. */
 async function requireAdmin(req, env) {
   const user = await requireUser(req, env);
   if (!isAdminRole(await roleOf(env, user))) throw new HttpError(403, "Admins only");
@@ -123,9 +139,11 @@ async function requireAdmin(req, env) {
 }
 
 /* ---------- validation ---------- */
+/** Normalize bounded plain-text input before persistence. */
 const text = (v, max) =>
   String(v ?? "").replace(/[\u0000-\u001f<>"\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 
+/** Normalize supported social profile URLs into compact handles. */
 function handleOf(v) {
   let s = text(v, 120);
   const pid = s.match(/profile\.php\?id=(\d+)/i);
@@ -135,10 +153,12 @@ function handleOf(v) {
 }
 
 // rows of one-line items joined by "~"
+/** Normalize a bounded list of single-line achievement entries. */
 function linesOf(v, max) {
   return String(v ?? "").split("~").map((r) => text(r.replace(/\|/g, " "), max)).filter(Boolean).slice(0, MAX_ROWS).join("~");
 }
 // rows of columns: keep the column count, drop empty rows
+/** Normalize bounded rows and columns for education and work histories. */
 function listOf(v, cols) {
   return String(v ?? "").split("~").map((r) => {
     const c = r.split("|").slice(0, cols).map((x) => text(x, 120));
@@ -147,6 +167,7 @@ function listOf(v, cols) {
   }).filter((c) => c.some(Boolean)).slice(0, MAX_ROWS).map((c) => c.join("|")).join("~");
 }
 
+/** Normalize Indian and international phone numbers while rejecting invalid lengths. */
 function phoneOf(v) {
   const raw = String(v ?? "").trim();
   if (raw.startsWith("+") && !raw.startsWith("+91")) {
@@ -159,6 +180,7 @@ function phoneOf(v) {
   return d.length === 10 ? Number(d) : null;
 }
 
+/** Validate editable profile fields without accepting login identities or roles. */
 export function clean(input, accountEmail) {
   const inp = input && typeof input === "object" ? input : {};
   const out = {};
@@ -203,15 +225,19 @@ export function clean(input, accountEmail) {
   return { data: out, errors };
 }
 
+/** Preserve legacy media and memorial fields outside ordinary profile edits. */
 function keepLegacy(live, data) {
   for (const k of KEEP_KEYS) if (live && live[k] !== undefined && data[k] === undefined) data[k] = live[k];
   return data;
 }
 
 /* ---------- daily email about pending approvals ---------- */
+/** Escape user-supplied text before inserting it into notification HTML. */
 const escHtml = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+/** Format notification dates in the school community timezone. */
 const dayIST = (t) => new Date(t * 1000).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
 // Sends one email to one randomly chosen admin when anything waits for approval. It runs every day, so an unanswered request is mailed again the next day.
+/** Send an approval reminder only when pending requests and email bindings exist. */
 async function notifyPending(env) {
   const { results } = await env.DB.prepare("SELECT id, name, batch, status, data, draft, draft_photo, updated_at FROM members WHERE draft IS NOT NULL OR draft_photo IS NOT NULL ORDER BY updated_at").all();
   if (!results.length) return { sent: false, pending: 0, reason: "Nothing is waiting for approval" };
@@ -257,6 +283,7 @@ async function notifyPending(env) {
 
 /* ---------- Alumni Meet 2026 ---------- */
 const YESNO = ["Yes", "No"];
+/** Validate Meet attendance and conditional companion, meal, and T-shirt answers. */
 export function cleanMeet(input) {
   const inp = input && typeof input === "object" ? input : {};
   const e = [], o = {};
@@ -291,6 +318,7 @@ export function cleanMeet(input) {
   }
   return { data: o, errors: e };
 }
+/** Shape a stored Meet response for authenticated participant or organizer views. */
 const meetOut = (r) => ({
   email: r.email, Batch: r.batch, Name: r.name, Phone: r.phone, CurrentStatus: r.status, Institute: r.institute || "",
   Attend: r.attend, Companions: r.companions || "", CompanionCount: r.companion_count || 0, Breakfast: r.breakfast || "",
@@ -298,6 +326,7 @@ const meetOut = (r) => ({
 });
 
 /* ---------- views ---------- */
+/** Build a profile response and filter public output through an explicit allowlist. */
 function entryOf(row, level, origin, tag, gallery) {
   const d = JSON.parse(row.data || "{}");
   d.Batch = row.batch;
@@ -311,15 +340,19 @@ function entryOf(row, level, origin, tag, gallery) {
   return d;
 }
 
+/** Decode nullable JSON columns from persisted records. */
 const parse = (t) => (t ? JSON.parse(t) : null);
+/** Shape the private profile record used by its owner and administrators. */
 const toRow = (m) => ({
   id: m.id, email: m.email, batch: m.batch, name: m.name, status: m.status,
   data: parse(m.data) || {}, draft: parse(m.draft), has_prev: !!m.prev,
   photo: m.photo, draft_photo: m.draft_photo, created_at: m.created_at, updated_at: m.updated_at,
 });
+/** Compare profile fields without depending on top-level key order. */
 const stable = (o) => JSON.stringify(Object.keys(o || {}).sort().map((k) => [k, o[k]]));
 
 /* ---------- member lookup ---------- */
+/** Resolve verified account ownership; only exact verified email can claim an unlinked record. */
 async function findMember(env, user) {
   let m = await env.DB.prepare("SELECT * FROM members WHERE sub = ?").bind(user.sub).first();
   if (!m) {
@@ -333,6 +366,7 @@ async function findMember(env, user) {
 }
 
 /* ---------- photos ---------- */
+/** Identify supported raster image signatures before accepting uploads. */
 function imageType(bytes) {
   const b = new Uint8Array(bytes.slice(0, 12));
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return ["image/jpeg", "jpg"];
@@ -341,6 +375,7 @@ function imageType(bytes) {
   return null;
 }
 
+/** Encode stored DP bytes without exceeding JavaScript argument-size limits. */
 function toB64(buf) {
   const b = new Uint8Array(buf);
   let out = "";
@@ -348,6 +383,7 @@ function toB64(buf) {
   return btoa(out);
 }
 
+/** Read and decode a stored DP with the caller-selected cache policy. */
 async function photoResponse(env, key, cache) {
   const row = await env.DB.prepare("SELECT content_type, data FROM photos WHERE key = ?").bind(key).first();
   if (!row) throw new HttpError(404, "Not found");
@@ -357,8 +393,10 @@ async function photoResponse(env, key, cache) {
   return new Response(bytes, { headers: { "Content-Type": row.content_type, "Cache-Control": cache } });
 }
 
+/** Remove a stored DP when its reference is replaced or deleted. */
 const dropPhoto = (env, key) => (key ? env.DB.prepare("DELETE FROM photos WHERE key = ?").bind(key).run() : null);
 
+/** Promote a pending DP to a public key during administrator approval. */
 async function promotePhoto(env, mem) {
   // move a pending photo to live, return the new key
   const there = await env.DB.prepare("SELECT key FROM photos WHERE key = ?").bind(mem.draft_photo).first();
@@ -370,23 +408,28 @@ async function promotePhoto(env, mem) {
 }
 
 // One number that goes up whenever anything public changes. Pages keep their copy and ask "has it changed?".
+/** Read the directory revision used by clients and cache invalidation. */
 async function getVer(env) {
   const r = await env.DB.prepare("SELECT value FROM meta WHERE key = 'ver'").first();
   return r ? Number(r.value) || 1 : 1;
 }
+/** Atomically increment the public-directory revision. */
 async function bumpVer(env) {
   await env.DB.prepare("INSERT INTO meta (key, value) VALUES ('ver', '2') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1").run();
 }
+/** Refresh the directory revision and invalidate affected batch caches. */
 async function touched(env, url, years) {
   await bumpVer(env);
   await dropPublicCache(url, years);
 }
 
+/** Remove gallery metadata and its backing object. */
 async function dropGalleryPhoto(env, id) {
   if (env.GALLERY) { try { await env.GALLERY.delete("g/" + id); } catch {} }
   await env.DB.prepare("DELETE FROM gallery WHERE id = ?").bind(id).run();
 }
 
+/** Invalidate sanitized public responses for affected batch years. */
 async function dropPublicCache(url, years) {
   if (typeof caches === "undefined" || !caches.default) return;
   for (const y of new Set(years)) {
@@ -395,6 +438,7 @@ async function dropPublicCache(url, years) {
 }
 
 /* ---------- routes ---------- */
+/** Dispatch API requests after applying the authentication required by each route. */
 async function route(req, url, env) {
   const path = url.pathname.replace(/\/+$/, "");
   const method = req.method;
@@ -879,9 +923,11 @@ async function route(req, url, env) {
 }
 
 export default {
+  /** Run the configured reminder job without blocking the scheduled invocation. */
   async scheduled(event, env, ctx) {
     ctx.waitUntil(notifyPending(env).then((r) => console.log("pending mail:", JSON.stringify(r))).catch((e) => console.error("pending mail error", e)));
   },
+  /** Apply CORS and convert known failures into stable HTTP responses. */
   async fetch(req, env) {
     const cors = corsHeaders(req.headers.get("Origin"), env);
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
