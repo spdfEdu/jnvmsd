@@ -1,38 +1,757 @@
-import {useState} from 'react';
-import {useAuth} from '../auth/useAuth';
-import {api} from '../lib/api';
-import {useResource} from '../lib/useResource';
-import {compressPhoto} from '../lib/photos';
-import {Page,Field,Status,PrivatePhoto} from '../components/alumni/UI';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { CalendarPlus, Database, Image as ImageIcon, ShieldCheck } from 'lucide-react';
+import { useAuth } from '../auth/useAuth';
+import { api } from '../lib/api';
+import { useResource } from '../lib/useResource';
+import { compressPhoto } from '../lib/photos';
+import { Page, Field, Status, PrivatePhoto } from '../components/alumni/UI';
 import ProfileForm from '../components/alumni/ProfileForm';
-const sections={members:'Members',gallery:'Gallery',events:'Events',announcements:'Announcements',contact:'Contact inbox',roles:'Roles',representatives:'Representatives'};
-const paths={members:'/api/admin/list',gallery:'/api/review/gallery',events:'/api/admin/events',announcements:'/api/admin/announcements',contact:'/api/admin/contact',roles:'/api/admin/roles',representatives:'/api/admin/representatives'};
+import {
+  AlumniConnectDeck,
+  BentoFeatureBand,
+  FaqAccordionBand,
+  MotionCard,
+  MotionSection,
+  TimelineBand,
+} from '../components/alumni/MotionShowcase';
+
+const sections = {
+  members: 'Members',
+  gallery: 'Gallery',
+  events: 'Events',
+  announcements: 'Announcements',
+  contact: 'Contact inbox',
+  roles: 'Roles',
+  representatives: 'Representatives',
+};
+
+const paths = {
+  members: '/api/admin/list',
+  gallery: '/api/review/gallery',
+  events: '/api/admin/events',
+  announcements: '/api/admin/announcements',
+  contact: '/api/admin/contact',
+  roles: '/api/admin/roles',
+  representatives: '/api/admin/representatives',
+};
+
+const ADMIN_CAPABILITIES = [
+  {
+    icon: Database,
+    tag: 'Dataset Stewardship',
+    title: 'Approve, Edit, Undo & Merge',
+    body: 'Review member drafts, preview pending profile photos, undo accidental edits, and link verified duplicate records.',
+  },
+  {
+    icon: ImageIcon,
+    tag: 'Archive Moderation',
+    title: 'Historical & Member Galleries',
+    body: 'Publish historical batch photographs directly or approve/reject alumni gallery uploads.',
+  },
+  {
+    icon: CalendarPlus,
+    tag: 'Event Publishing',
+    title: 'Events & Announcements',
+    body: 'Schedule gatherings with localized timestamps, manage publication status, and post community announcements.',
+  },
+  {
+    icon: ShieldCheck,
+    tag: 'Role Governance',
+    title: 'Core & Admin Assignment',
+    body: 'Grant organizer or administrator roles and assign core batch representatives cleanly.',
+  },
+];
+
+const MODERATION_FLOW = [
+  {
+    step: 'Stage 01 · Member Queue',
+    title: 'Inspect Pending Profiles & DPs',
+    body: 'Preview submitted drafts and pending profile portraits side-by-side before approving changes onto the public site.',
+  },
+  {
+    step: 'Stage 02 · Gallery Vault',
+    title: 'Curate Batch Photography',
+    body: 'Approve member uploads or upload archival cohort photos with accurate batch tags.',
+  },
+  {
+    step: 'Stage 03 · Communication',
+    title: 'Manage Events, Notices & Inbox',
+    body: 'Keep reunion schedules up to date and track contact messages from new to resolved.',
+  },
+];
+
+const ADMIN_FAQS = [
+  {
+    q: 'Can an edit made by an administrator be rolled back?',
+    a: 'Yes. Members with previous snapshots display an Undo last edit button inside the Members tab.',
+  },
+  {
+    q: 'When should Link verified profile (merge) be used?',
+    a: 'Only after verifying that a pending login belongs to an existing approved legacy record in the alumni dataset.',
+  },
+];
+
 /** Convert a stored UTC timestamp into a value suitable for a local datetime input. */
-function localTime(value){if(!value)return '';const date=new Date(value);return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);}
-/** Edit event/announcement fields with human-readable labels instead of raw API payloads. */
-function ContentEditor({kind,record,onSave}){const [data,setData]=useState({...record,status:record?.status||'draft',starts_at:localTime(record?.starts_at),ends_at:localTime(record?.ends_at),registration_deadline:localTime(record?.registration_deadline)}),[busy,setBusy]=useState(false),[error,setError]=useState('');
- /** Validate browser fields and serialize event times with an explicit timezone. */
- async function submit(e){e.preventDefault();setBusy(true);setError('');try{const body={...data};if(kind==='events')for(const key of ['starts_at','ends_at','registration_deadline'])body[key]=body[key]?new Date(body[key]).toISOString():null;await onSave(body);}catch(err){setError(err.message);}finally{setBusy(false);}}
- /** Update one content field while preserving the current record's other values. */
- function change(key,value){setData(old=>({...old,[key]:value}));}
- return <form className="alumni-card" onSubmit={submit}><h2>{record?.id?'Edit':'Create'} {kind==='events'?'event':'announcement'}</h2><Field label="Title" required maxLength={120} value={data.title} onChange={v=>change('title',v)}/><Field label={kind==='events'?'Description':'Announcement text'} multiline required value={kind==='events'?data.description:data.body} onChange={v=>change(kind==='events'?'description':'body',v)}/>{kind==='events'&&<><Field label="Venue" value={data.venue} onChange={v=>change('venue',v)}/><div className="alumni-grid">{[['starts_at','Starts'],['ends_at','Ends'],['registration_deadline','Registration deadline']].map(([key,label])=><Field key={key} label={label} type="datetime-local" value={data[key]} onChange={v=>change(key,v)}/>)}</div></>}<Field label="Publication status" options={kind==='events'?['draft','published','closed']:['draft','published']} required value={data.status} onChange={v=>change('status',v)}/><button disabled={busy}>{busy?'Saving…':record?.id?'Save changes':kind==='events'?'Create event':'Create announcement'}</button>{error&&<p role="alert">{error}</p>}</form>;}
-/** Render the administrator workspace; every action is independently authorized by the backend. */
-function AdminWorkspace(){const [section,setSection]=useState('members'),[editing,setEditing]=useState(null),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[email,setEmail]=useState(''),[role,setRole]=useState('core'),[batch,setBatch]=useState('2015'),[memberId,setMemberId]=useState(''),[caption,setCaption]=useState(''),[mergeTargets,setMergeTargets]=useState({});const resource=useResource(paths[section]),members=useResource('/api/admin/list'),roles=useResource('/api/admin/roles'),historical=useResource('/api/gallery');
- /** Run a management action and refresh the relevant lists after success. */
- async function action(path,method='POST',body){setBusy(true);setNotice('');try{const result=await api(path,{method,body});resource.reload();members.reload();roles.reload();historical.reload();setNotice('Changes saved.');return result;}catch(e){setNotice(e.message);throw e;}finally{setBusy(false);}}
- /** Upload a historical photograph without assigning it to a student's profile. */
- async function upload(e){const file=e.target.files?.[0];if(!file)return;try{const blob=await compressPhoto(file);await action(`/api/admin/batch-photos?batch=${batch}&caption=${encodeURIComponent(caption)}`,'POST',blob);}catch(error){setNotice(error.message);}finally{e.target.value='';}}
- /** Ask the administrator to confirm an irreversible record deletion. */
- function remove(path){if(window.confirm('Delete this record? This cannot be undone.'))action(path,'DELETE').catch(()=>{});}
- const approved=(members.data?.members||[]).filter(m=>m.status==='approved');const coreEmails=new Set((roles.data?.roles||[]).filter(r=>r.role==='core').map(r=>r.email));
- return <><nav className="alumni-tabs" aria-label="Administration sections">{Object.entries(sections).map(([key,label])=><button key={key} className={section===key?'':'secondary'} onClick={()=>{setSection(key);setEditing(null);setNotice('');}}>{label}</button>)}</nav>{notice&&<p role="status" className="alumni-notice">{notice}</p>}<Status resource={resource}/>
- {section==='members'&&<>{editing&&<ProfileForm key={editing.id} initial={{...editing.data,...editing.draft}} onSave={data=>action('/api/admin/'+editing.id,'PUT',{data})}/>}<div className="alumni-grid">{resource.data?.members?.map(member=><article className="alumni-card" key={member.id}><h2>{member.draft?.Name||member.data?.Name||member.name}</h2><p>{member.email} · Batch {member.draft?.Batch||member.batch}</p><p>{member.status} {member.draft&&'· Changes pending'}</p><p>{member.data?.Phone||member.draft?.Phone}</p>{member.draft_photo&&<PrivatePhoto path={"/api/admin/photo/"+member.draft_photo} alt={"Pending profile photo for "+member.name}/>}<div className="alumni-toolbar"><button disabled={busy} onClick={()=>setEditing(member)}>Edit profile</button>{(member.draft||member.draft_photo)&&<><button disabled={busy} onClick={()=>action(`/api/admin/${member.id}/approve`).catch(()=>{})}>Approve</button><button className="secondary" disabled={busy} onClick={()=>action(`/api/admin/${member.id}/reject`).catch(()=>{})}>Reject</button></>}{member.has_prev&&<button className="secondary" disabled={busy} onClick={()=>action(`/api/admin/${member.id}/undo`).catch(()=>{})}>Undo last edit</button>}<button className="danger" disabled={busy} onClick={()=>remove('/api/admin/'+member.id)}>Delete member</button></div>{member.status!=='approved'&&<><label className="alumni-field"><span>Verified existing profile to link</span><select value={mergeTargets[member.id]||''} onChange={e=>setMergeTargets(old=>({...old,[member.id]:e.target.value}))}><option value="">Choose only after verifying identity…</option>{approved.map(target=><option key={target.id} value={target.id}>{target.name} · {target.batch}</option>)}</select></label><button disabled={busy||!mergeTargets[member.id]} onClick={()=>action(`/api/admin/${member.id}/merge`,'POST',{target:mergeTargets[member.id]}).catch(()=>{})}>Link verified profile</button></>}</article>)}</div></>}
- {section==='gallery'&&<><h2>Historical photos</h2><Status resource={historical}/><div className="alumni-grid">{historical.data?.photos?.filter(photo=>photo.source==='batch').map(photo=><article className="alumni-card" key={photo.id}><PrivatePhoto id={photo.id} alt={photo.caption||'Historical batch photo'}/><p>{photo.caption}</p><p>Batch {photo.batch}</p><button className="danger" disabled={busy} onClick={()=>remove('/api/admin/batch-photos/'+photo.id)}>Delete historical photo</button></article>)}</div><section className="alumni-card"><h2>Add a historical batch photo</h2><Field label="Batch year" type="number" min={2008} max={2100} value={batch} onChange={setBatch}/><Field label="Caption" value={caption} onChange={setCaption}/><label className="alumni-field"><span>Historical photo</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={upload}/></label></section><div className="alumni-grid">{resource.data?.photos?.map(photo=><article className="alumni-card" key={photo.id}><PrivatePhoto id={photo.id} alt={photo.caption||photo.name}/><p>{photo.name} · {photo.batch} · {photo.status}</p><p>{photo.caption}</p><div className="alumni-toolbar"><button disabled={busy} onClick={()=>action(`/api/review/gallery/${photo.id}/approve`).catch(()=>{})}>Approve photo</button><button className="secondary" disabled={busy} onClick={()=>action(`/api/review/gallery/${photo.id}/reject`).catch(()=>{})}>Reject photo</button><button className="danger" disabled={busy} onClick={()=>remove('/api/review/gallery/'+photo.id)}>Delete photo</button></div></article>)}</div></>}
- {['events','announcements'].includes(section)&&<><ContentEditor key={section+(editing?.id||'new')} kind={section} record={editing} onSave={async data=>{await action(paths[section]+(editing?.id?'/'+editing.id:''),editing?.id?'PUT':'POST',data);setEditing(null);}}/>{editing&&<button className="secondary" onClick={()=>setEditing(null)}>Create another</button>}<div className="alumni-grid">{resource.data?.[section]?.map(item=><article className="alumni-card" key={item.id}><h3>{item.title}</h3><p>{item.status}</p><button onClick={()=>setEditing(item)}>Edit {section==='events'?'event':'announcement'}</button>{section==='announcements'&&<button className="danger" onClick={()=>remove(paths[section]+'/'+item.id)}>Delete announcement</button>}</article>)}</div></>}
- {section==='contact'&&resource.data?.messages?.map(message=><article className="alumni-card" key={message.id}><h2>{message.name}</h2><p>{message.email}</p><p>{message.message}</p><Field label="Message status" value={message.status} options={['new','read','resolved']} onChange={status=>action('/api/admin/contact/'+message.id,'PUT',{status}).catch(()=>{})}/></article>)}
- {section==='roles'&&<><form className="alumni-card" onSubmit={e=>{e.preventDefault();action('/api/admin/roles','POST',{email,role}).catch(()=>{});}}><h2>Assign a role</h2><Field label="Google account email" type="email" required value={email} onChange={setEmail}/><Field label="Role" options={['core','admin']} required value={role} onChange={setRole}/><button disabled={busy}>Save role</button></form>{resource.data?.owners?.map(owner=><p key={owner}>{owner} · Owner (managed in account settings)</p>)}{resource.data?.roles?.map(item=><article className="alumni-card" key={item.email}><p>{item.email} · {item.role}</p><button className="danger" disabled={busy} onClick={()=>remove('/api/admin/roles/'+encodeURIComponent(item.email))}>Remove role</button></article>)}</>}
- {section==='representatives'&&<><form className="alumni-card" onSubmit={e=>{e.preventDefault();action('/api/admin/representatives','POST',{batch:Number(batch),member_id:memberId}).catch(()=>{});}}><h2>Assign a batch representative</h2><Field label="Batch year" type="number" min={2008} max={2100} required value={batch} onChange={setBatch}/><label className="alumni-field"><span>Approved core member</span><select required value={memberId} onChange={e=>setMemberId(e.target.value)}><option value="">Choose a core member…</option>{approved.filter(m=>coreEmails.has(m.email)).map(m=><option key={m.id} value={m.id}>{m.name} · {m.email}</option>)}</select></label><p>Assign the core role before choosing a representative.</p><button disabled={busy}>Assign representative</button></form>{resource.data?.representatives?.map(row=><article className="alumni-card" key={row.batch+row.member_id}><p>Batch {row.batch} · {approved.find(m=>m.id===row.member_id)?.name||'Former member'}</p><button className="secondary" onClick={()=>action('/api/admin/representatives','DELETE',row).catch(()=>{})}>Remove assignment</button></article>)}</>}
- </>;
+function localTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
 }
+
+/** Edit event/announcement fields with human-readable labels instead of raw API payloads. */
+function ContentEditor({ kind, record, onSave }) {
+  const [data, setData] = useState({
+    ...record,
+    status: record?.status || 'draft',
+    starts_at: localTime(record?.starts_at),
+    ends_at: localTime(record?.ends_at),
+    registration_deadline: localTime(record?.registration_deadline),
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  /** Validate browser fields and serialize event times with an explicit timezone. */
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const body = { ...data };
+      if (kind === 'events') {
+        for (const key of ['starts_at', 'ends_at', 'registration_deadline']) {
+          body[key] = body[key] ? new Date(body[key]).toISOString() : null;
+        }
+      }
+      await onSave(body);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Update one content field while preserving the current record's other values. */
+  function change(key, value) {
+    setData((old) => ({ ...old, [key]: value }));
+  }
+
+  return (
+    <form className="alumni-card" onSubmit={submit}>
+      <h2>
+        {record?.id ? 'Edit' : 'Create'} {kind === 'events' ? 'event' : 'announcement'}
+      </h2>
+      <Field
+        label="Title"
+        required
+        maxLength={120}
+        value={data.title}
+        onChange={(v) => change('title', v)}
+      />
+      <Field
+        label={kind === 'events' ? 'Description' : 'Announcement text'}
+        multiline
+        required
+        value={kind === 'events' ? data.description : data.body}
+        onChange={(v) => change(kind === 'events' ? 'description' : 'body', v)}
+      />
+      {kind === 'events' && (
+        <>
+          <Field
+            label="Venue"
+            value={data.venue}
+            onChange={(v) => change('venue', v)}
+          />
+          <div className="alumni-grid">
+            {[
+              ['starts_at', 'Starts'],
+              ['ends_at', 'Ends'],
+              ['registration_deadline', 'Registration deadline'],
+            ].map(([key, label]) => (
+              <Field
+                key={key}
+                label={label}
+                type="datetime-local"
+                value={data[key]}
+                onChange={(v) => change(key, v)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+      <Field
+        label="Publication status"
+        options={
+          kind === 'events' ? ['draft', 'published', 'closed'] : ['draft', 'published']
+        }
+        required
+        value={data.status}
+        onChange={(v) => change('status', v)}
+      />
+      <button disabled={busy}>
+        {busy
+          ? 'Saving…'
+          : record?.id
+            ? 'Save changes'
+            : kind === 'events'
+              ? 'Create event'
+              : 'Create announcement'}
+      </button>
+      {error && (
+        <p role="alert" className="alumni-notice">
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
+
+/** Render the administrator workspace; every action is independently authorized by the backend. */
+function AdminWorkspace() {
+  const [section, setSection] = useState('members');
+  const [editing, setEditing] = useState(null);
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('core');
+  const [batch, setBatch] = useState('2015');
+  const [memberId, setMemberId] = useState('');
+  const [caption, setCaption] = useState('');
+  const [mergeTargets, setMergeTargets] = useState({});
+
+  const resource = useResource(paths[section]);
+  const members = useResource('/api/admin/list');
+  const roles = useResource('/api/admin/roles');
+  const historical = useResource('/api/gallery');
+
+  /** Run a management action and refresh the relevant lists after success. */
+  async function action(path, method = 'POST', body) {
+    setBusy(true);
+    setNotice('');
+    try {
+      const result = await api(path, { method, body });
+      resource.reload();
+      members.reload();
+      roles.reload();
+      historical.reload();
+      setNotice('Changes saved.');
+      return result;
+    } catch (e) {
+      setNotice(e.message);
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Upload a historical photograph without assigning it to a student's profile. */
+  async function upload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const blob = await compressPhoto(file);
+      await action(
+        `/api/admin/batch-photos?batch=${batch}&caption=${encodeURIComponent(caption)}`,
+        'POST',
+        blob
+      );
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      e.target.value = '';
+    }
+  }
+
+  /** Ask the administrator to confirm an irreversible record deletion. */
+  function remove(path) {
+    if (window.confirm('Delete this record? This cannot be undone.')) {
+      action(path, 'DELETE').catch(() => {});
+    }
+  }
+
+  const approved = (members.data?.members || []).filter(
+    (m) => m.status === 'approved'
+  );
+  const coreEmails = new Set(
+    (roles.data?.roles || []).filter((r) => r.role === 'core').map((r) => r.email)
+  );
+
+  return (
+    <div className="alumni-stack-lg">
+      <nav className="alumni-tabs" aria-label="Administration sections">
+        {Object.entries(sections).map(([key, label]) => (
+          <button
+            key={key}
+            className={section === key ? '' : 'secondary'}
+            onClick={() => {
+              setSection(key);
+              setEditing(null);
+              setNotice('');
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {notice && (
+        <p role="status" className="alumni-notice">
+          {notice}
+        </p>
+      )}
+      <Status resource={resource} />
+
+      {section === 'members' && (
+        <>
+          {editing && (
+            <ProfileForm
+              key={editing.id}
+              initial={{ ...editing.data, ...editing.draft }}
+              onSave={(data) => action('/api/admin/' + editing.id, 'PUT', { data })}
+            />
+          )}
+          <div className="alumni-grid">
+            {resource.data?.members?.map((member) => (
+              <article className="alumni-card" key={member.id}>
+                <h2>{member.draft?.Name || member.data?.Name || member.name}</h2>
+                <p>
+                  {member.email} · Batch {member.draft?.Batch || member.batch}
+                </p>
+                <p>
+                  {member.status} {member.draft && '· Changes pending'}
+                </p>
+                <p>{member.data?.Phone || member.draft?.Phone}</p>
+                {member.draft_photo && (
+                  <PrivatePhoto
+                    path={'/api/admin/photo/' + member.draft_photo}
+                    alt={'Pending profile photo for ' + member.name}
+                  />
+                )}
+                <div className="alumni-toolbar">
+                  <button disabled={busy} onClick={() => setEditing(member)}>
+                    Edit profile
+                  </button>
+                  {(member.draft || member.draft_photo) && (
+                    <>
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          action(`/api/admin/${member.id}/approve`).catch(() => {})
+                        }
+                      >
+                        Approve
+                      </button>
+                      <button
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() =>
+                          action(`/api/admin/${member.id}/reject`).catch(() => {})
+                        }
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                  {member.has_prev && (
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() =>
+                        action(`/api/admin/${member.id}/undo`).catch(() => {})
+                      }
+                    >
+                      Undo last edit
+                    </button>
+                  )}
+                  <button
+                    className="danger"
+                    disabled={busy}
+                    onClick={() => remove('/api/admin/' + member.id)}
+                  >
+                    Delete member
+                  </button>
+                </div>
+                {member.status !== 'approved' && (
+                  <>
+                    <label className="alumni-field">
+                      <span>Verified existing profile to link</span>
+                      <select
+                        value={mergeTargets[member.id] || ''}
+                        onChange={(e) =>
+                          setMergeTargets((old) => ({
+                            ...old,
+                            [member.id]: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Choose only after verifying identity…</option>
+                        {approved.map((target) => (
+                          <option key={target.id} value={target.id}>
+                            {target.name} · {target.batch}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      disabled={busy || !mergeTargets[member.id]}
+                      onClick={() =>
+                        action(`/api/admin/${member.id}/merge`, 'POST', {
+                          target: mergeTargets[member.id],
+                        }).catch(() => {})
+                      }
+                    >
+                      Link verified profile
+                    </button>
+                  </>
+                )}
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+
+      {section === 'gallery' && (
+        <>
+          <h2>Historical photos</h2>
+          <Status resource={historical} />
+          <div className="alumni-grid">
+            {historical.data?.photos
+              ?.filter((photo) => photo.source === 'batch')
+              .map((photo) => (
+                <article className="alumni-card" key={photo.id}>
+                  <PrivatePhoto
+                    id={photo.id}
+                    alt={photo.caption || 'Historical batch photo'}
+                  />
+                  <p>{photo.caption}</p>
+                  <p>Batch {photo.batch}</p>
+                  <button
+                    className="danger"
+                    disabled={busy}
+                    onClick={() => remove('/api/admin/batch-photos/' + photo.id)}
+                  >
+                    Delete historical photo
+                  </button>
+                </article>
+              ))}
+          </div>
+
+          <section className="alumni-card">
+            <h2>Add a historical batch photo</h2>
+            <Field
+              label="Batch year"
+              type="number"
+              min={2008}
+              max={2100}
+              value={batch}
+              onChange={setBatch}
+            />
+            <Field label="Caption" value={caption} onChange={setCaption} />
+            <label className="alumni-field">
+              <span>Historical photo</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={busy}
+                onChange={upload}
+              />
+            </label>
+          </section>
+
+          <div className="alumni-grid">
+            {resource.data?.photos?.map((photo) => (
+              <article className="alumni-card" key={photo.id}>
+                <PrivatePhoto id={photo.id} alt={photo.caption || photo.name} />
+                <p>
+                  {photo.name} · {photo.batch} · {photo.status}
+                </p>
+                <p>{photo.caption}</p>
+                <div className="alumni-toolbar">
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      action(`/api/review/gallery/${photo.id}/approve`).catch(
+                        () => {}
+                      )
+                    }
+                  >
+                    Approve photo
+                  </button>
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() =>
+                      action(`/api/review/gallery/${photo.id}/reject`).catch(
+                        () => {}
+                      )
+                    }
+                  >
+                    Reject photo
+                  </button>
+                  <button
+                    className="danger"
+                    disabled={busy}
+                    onClick={() => remove('/api/review/gallery/' + photo.id)}
+                  >
+                    Delete photo
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+
+      {['events', 'announcements'].includes(section) && (
+        <>
+          <ContentEditor
+            key={section + (editing?.id || 'new')}
+            kind={section}
+            record={editing}
+            onSave={async (data) => {
+              await action(
+                paths[section] + (editing?.id ? '/' + editing.id : ''),
+                editing?.id ? 'PUT' : 'POST',
+                data
+              );
+              setEditing(null);
+            }}
+          />
+          {editing && (
+            <button className="secondary" onClick={() => setEditing(null)}>
+              Create another
+            </button>
+          )}
+          <div className="alumni-grid">
+            {resource.data?.[section]?.map((item) => (
+              <article className="alumni-card" key={item.id}>
+                <h3>{item.title}</h3>
+                <p>{item.status}</p>
+                <button onClick={() => setEditing(item)}>
+                  Edit {section === 'events' ? 'event' : 'announcement'}
+                </button>
+                {section === 'announcements' && (
+                  <button
+                    className="danger"
+                    onClick={() => remove(paths[section] + '/' + item.id)}
+                  >
+                    Delete announcement
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+
+      {section === 'contact' &&
+        resource.data?.messages?.map((message) => (
+          <article className="alumni-card" key={message.id}>
+            <h2>{message.name}</h2>
+            <p>{message.email}</p>
+            <p>{message.message}</p>
+            <Field
+              label="Message status"
+              value={message.status}
+              options={['new', 'read', 'resolved']}
+              onChange={(status) =>
+                action('/api/admin/contact/' + message.id, 'PUT', {
+                  status,
+                }).catch(() => {})
+              }
+            />
+          </article>
+        ))}
+
+      {section === 'roles' && (
+        <>
+          <form
+            className="alumni-card"
+            onSubmit={(e) => {
+              e.preventDefault();
+              action('/api/admin/roles', 'POST', { email, role }).catch(() => {});
+            }}
+          >
+            <h2>Assign a role</h2>
+            <Field
+              label="Google account email"
+              type="email"
+              required
+              value={email}
+              onChange={setEmail}
+            />
+            <Field
+              label="Role"
+              options={['core', 'admin']}
+              required
+              value={role}
+              onChange={setRole}
+            />
+            <button disabled={busy}>Save role</button>
+          </form>
+          {resource.data?.owners?.map((owner) => (
+            <p key={owner}>
+              {owner} · Owner (managed in account settings)
+            </p>
+          ))}
+          {resource.data?.roles?.map((item) => (
+            <article className="alumni-card" key={item.email}>
+              <p>
+                {item.email} · {item.role}
+              </p>
+              <button
+                className="danger"
+                disabled={busy}
+                onClick={() =>
+                  remove('/api/admin/roles/' + encodeURIComponent(item.email))
+                }
+              >
+                Remove role
+              </button>
+            </article>
+          ))}
+        </>
+      )}
+
+      {section === 'representatives' && (
+        <>
+          <form
+            className="alumni-card"
+            onSubmit={(e) => {
+              e.preventDefault();
+              action('/api/admin/representatives', 'POST', {
+                batch: Number(batch),
+                member_id: memberId,
+              }).catch(() => {});
+            }}
+          >
+            <h2>Assign a batch representative</h2>
+            <Field
+              label="Batch year"
+              type="number"
+              min={2008}
+              max={2100}
+              required
+              value={batch}
+              onChange={setBatch}
+            />
+            <label className="alumni-field">
+              <span>Approved core member</span>
+              <select
+                required
+                value={memberId}
+                onChange={(e) => setMemberId(e.target.value)}
+              >
+                <option value="">Choose a core member…</option>
+                {approved
+                  .filter((m) => coreEmails.has(m.email))
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} · {m.email}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <p>Assign the core role before choosing a representative.</p>
+            <button disabled={busy}>Assign representative</button>
+          </form>
+          {resource.data?.representatives?.map((row) => (
+            <article className="alumni-card" key={row.batch + row.member_id}>
+              <p>
+                Batch {row.batch} ·{' '}
+                {approved.find((m) => m.id === row.member_id)?.name ||
+                  'Former member'}
+              </p>
+              <button
+                className="secondary"
+                onClick={() =>
+                  action('/api/admin/representatives', 'DELETE', row).catch(
+                    () => {}
+                  )
+                }
+              >
+                Remove assignment
+              </button>
+            </article>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 /** Keep all administrator screens unavailable to members and read-only core accounts. */
-export default function Manage(){const {account,loading}=useAuth();return <Page title="Administration" intro="Manage alumni records, content, and community access.">{loading?<p>Loading account…</p>:account?.isAdmin?<AdminWorkspace/>:<p>Administrator access is required.</p>}</Page>;}
+export default function Manage() {
+  const { account, loading } = useAuth();
+  return (
+    <Page
+      eyebrow="Administrator Control Center"
+      title="Administration"
+      intro="Manage alumni records, content, and community access."
+      actions={
+        <>
+          <Link to="/organizers" className="alumni-action-link alumni-btn-pad">
+            Participation View
+          </Link>
+          <Link to="/directory" className="alumni-action-ghost alumni-btn-pad">
+            Directory
+          </Link>
+        </>
+      }
+      aside={
+        <MotionCard className="alumni-glass alumni-panel-pad">
+          <div className="alumni-stack-sm">
+            <span className="alumni-eyebrow">Security Boundary</span>
+            <p className="alumni-stat-value">
+              {account?.isAdmin ? 'Admin Active' : 'Protected'}
+            </p>
+            <p className="alumni-muted">
+              Every administrative mutation is verified against server-side role tables.
+            </p>
+          </div>
+        </MotionCard>
+      }
+    >
+      <MotionSection
+        eyebrow="Operations Console"
+        title="Community moderation & publishing"
+        description="Switch tabs to review members, gallery submissions, events, notices, messages, and roles."
+        compact
+      >
+        {loading ? (
+          <p className="alumni-notice">Loading account…</p>
+        ) : account?.isAdmin ? (
+          <AdminWorkspace />
+        ) : (
+          <div className="alumni-glass alumni-panel-pad">
+            <p>Administrator access is required.</p>
+          </div>
+        )}
+      </MotionSection>
+
+      <BentoFeatureBand
+        eyebrow="Admin Toolkit"
+        title="Full lifecycle stewardship"
+        description="Structured workflows for preserving alumni dataset accuracy."
+        items={ADMIN_CAPABILITIES}
+      />
+
+      <TimelineBand
+        eyebrow="Moderation Loop"
+        title="Standard review workflow"
+        description="Consistent verification steps keep member data clean and trustworthy."
+        items={MODERATION_FLOW}
+      />
+
+      <FaqAccordionBand
+        title="Administration notes"
+        description="Operational reminders for alumni stewards."
+        items={ADMIN_FAQS}
+      />
+
+      <AlumniConnectDeck currentPath="/manage" />
+    </Page>
+  );
+}

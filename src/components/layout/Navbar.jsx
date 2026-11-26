@@ -37,7 +37,7 @@ const Navbar = () => {
   const closeMenu = () => setIsOpen(false);
 
   return (
-    <nav className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-full max-w-[1250px] rounded-full px-6 py-[24px] bg-amber-100 ">
+    <nav className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-full max-w-[1250px] rounded-full px-6 py-[4px] bg-amber-100 ">
       <div className="mx-auto flex max-w-7xl items-center justify-between">
 
         {/* Logo */}

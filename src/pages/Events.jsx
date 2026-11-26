@@ -1,17 +1,429 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'motion/react';
+import { Calendar, CheckCircle2, MapPin, Sparkles, Users, Utensils } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { api } from '../lib/api';
 import { useResource } from '../lib/useResource';
-import { Page,Field,Status } from '../components/alumni/UI';
+import { Page, Field, Status } from '../components/alumni/UI';
+import {
+  AlumniConnectDeck,
+  BentoFeatureBand,
+  FaqAccordionBand,
+  MotionCard,
+  MotionSection,
+  StatsShowcase,
+  TimelineBand,
+} from '../components/alumni/MotionShowcase';
+
+const EVENT_HIGHLIGHTS = [
+  {
+    icon: Calendar,
+    tag: 'Live RSVPs',
+    title: 'Instant Registration Updates',
+    body: 'Signed-in members can register once and update attendance, companion counts, or meal choices anytime before closure.',
+  },
+  {
+    icon: Users,
+    tag: 'Family Welcome',
+    title: 'Companion Tracking',
+    body: 'Include spouses, children, or batch guests so campus hospitality and seating teams plan accurately.',
+  },
+  {
+    icon: Utensils,
+    tag: 'Hospitality',
+    title: 'Meals & Merchandise',
+    body: 'Reunion 2026 forms capture breakfast, lunch, and T-shirt sizing directly into the organizer sheet.',
+  },
+  {
+    icon: Sparkles,
+    tag: 'Stage & Mentoring',
+    title: 'Contribute on Campus',
+    body: 'Volunteer for career mentoring sessions with current JNV Murshidabad students or cultural performances.',
+  },
+];
+
+const REUNION_SCHEDULE = [
+  {
+    step: 'Morning · 08:30 AM',
+    title: 'Campus Welcome, Registration Desk & Breakfast',
+    body: 'Collect your Reunion 2026 kit and T-shirt, catch up over breakfast, and walk familiar pathways.',
+  },
+  {
+    step: 'Forenoon · 10:30 AM',
+    title: 'General Assembly & Principal Address',
+    body: 'Opening ceremony, batch roll-call across generations, and alumni mentoring stories on stage.',
+  },
+  {
+    step: 'Afternoon · 01:00 PM',
+    title: 'Community Lunch & Hostel Revisits',
+    body: 'Shared dining with Aravali, Nilgiri, Shivalik, and Udaigiri batchmates plus group photography.',
+  },
+  {
+    step: 'Evening · 04:00 PM',
+    title: 'Cultural Showcase & Farewell Circle',
+    body: 'Alumni performances, tributes to teachers, and planning future scholarship and community drives.',
+  },
+];
+
+const EVENT_FAQS = [
+  {
+    q: 'Do I need an account to register for an event?',
+    a: 'Yes. Sign in with Google on the My profile page so your registration is linked securely to your verified alumni record.',
+  },
+  {
+    q: 'Can I edit my response after submitting?',
+    a: 'Yes, as long as the event is still open. Click Register / update on the event card to modify your attendance or companion count.',
+  },
+  {
+    q: 'Who can view my registration answers?',
+    a: 'Only authorized core organizers and site administrators can review participation rosters for logistics and hospitality planning.',
+  },
+];
+
 /** Edit a participant's own registration, preserving the Meet 2026 question format. */
-function RegistrationForm({event,account,initial}){const meet=event.id==='meet2026',member=account.member?.data||{};const [data,setData]=useState(meet?{Name:member.Name||account.user.name,Batch:member.Batch||'',Phone:member.Phone||'',CurrentStatus:member.CurrentStatus||'',Institute:member.Institute||'',Attend:'No',Companions:'No',CompanionCount:0,Breakfast:'No',Lunch:'No',Tshirt:'M',Mentor:'No',...initial}:{name:member.Name||account.user.name,phone:member.Phone||'',attend:'No',companions:0,...initial});const [message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- /** Change only the current participant's form values. */
- function update(key,value){setData(old=>({...old,[key]:value}));}
- /** Save through the server's ownership-bound registration route. */
- async function save(e){e.preventDefault();setBusy(true);setError('');try{await api(meet?'/api/meet/me':`/api/events/${event.id}/registration`,{method:'PUT',body:meet?{data}:data});setMessage('Registration saved.');}catch(err){setError(err.message);}finally{setBusy(false);}}
- return <form className="alumni-card" onSubmit={save}><h3>Your registration</h3><div className="alumni-grid"><Field label="Name" value={data[meet?'Name':'name']} required onChange={v=>update(meet?'Name':'name',v)}/><Field label="Phone" type="tel" value={data[meet?'Phone':'phone']} required onChange={v=>update(meet?'Phone':'phone',v)}/>{meet&&<><Field label="Batch year" type="number" min={2008} max={2100} required value={data.Batch} onChange={v=>update('Batch',v)}/><Field label="Current status" required value={data.CurrentStatus} onChange={v=>update('CurrentStatus',v)}/><Field label="Institute" value={data.Institute} onChange={v=>update('Institute',v)}/></>}<Field label="Attendance" value={data[meet?'Attend':'attend']} options={['Yes','No']} required onChange={v=>update(meet?'Attend':'attend',v)}/>{meet&&data.Attend==='Yes'?<><Field label="Bringing companions?" options={['Yes','No']} required value={data.Companions} onChange={v=>update('Companions',v)}/>{data.Companions==='Yes'&&<Field label="Number of companions" type="number" min={1} max={10} required value={data.CompanionCount} onChange={v=>update('CompanionCount',Number(v))}/>}<Field label="Breakfast" options={['Yes','No']} value={data.Breakfast} required onChange={v=>update('Breakfast',v)}/><Field label="Lunch" options={['Yes','No']} value={data.Lunch} required onChange={v=>update('Lunch',v)}/><Field label="T-shirt size" options={['XS','S','M','L','XL','XXL','XXXL']} value={data.Tshirt} required onChange={v=>update('Tshirt',v)}/><Field label="Interested in mentoring / stage participation?" options={['Yes','No']} value={data.Mentor} required onChange={v=>update('Mentor',v)}/></>:!meet&&<Field label="Number of companions" type="number" min={0} max={10} value={data.companions} onChange={v=>update('companions',Number(v))}/>}</div><button disabled={busy||event.status==='closed'}>{busy?'Saving…':'Save registration'}</button>{message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}</form>;}
+function RegistrationForm({ event, account, initial }) {
+  const meet = event.id === 'meet2026';
+  const member = account.member?.data || {};
+  const [data, setData] = useState(
+    meet
+      ? {
+          Name: member.Name || account.user.name,
+          Batch: member.Batch || '',
+          Phone: member.Phone || '',
+          CurrentStatus: member.CurrentStatus || '',
+          Institute: member.Institute || '',
+          Attend: 'No',
+          Companions: 'No',
+          CompanionCount: 0,
+          Breakfast: 'No',
+          Lunch: 'No',
+          Tshirt: 'M',
+          Mentor: 'No',
+          ...initial,
+        }
+      : {
+          name: member.Name || account.user.name,
+          phone: member.Phone || '',
+          attend: 'No',
+          companions: 0,
+          ...initial,
+        }
+  );
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  /** Change only the current participant's form values. */
+  function update(key, value) {
+    setData((old) => ({ ...old, [key]: value }));
+  }
+
+  /** Save through the server's ownership-bound registration route. */
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await api(meet ? '/api/meet/me' : `/api/events/${event.id}/registration`, {
+        method: 'PUT',
+        body: meet ? { data } : data,
+      });
+      setMessage('Registration saved.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <motion.form
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="alumni-glass-soft alumni-panel-pad alumni-stack-md alumni-mt-sm"
+      onSubmit={save}
+    >
+      <h3>Your registration</h3>
+      <div className="alumni-grid">
+        <Field
+          label="Name"
+          value={data[meet ? 'Name' : 'name']}
+          required
+          onChange={(v) => update(meet ? 'Name' : 'name', v)}
+        />
+        <Field
+          label="Phone"
+          type="tel"
+          value={data[meet ? 'Phone' : 'phone']}
+          required
+          onChange={(v) => update(meet ? 'Phone' : 'phone', v)}
+        />
+        {meet && (
+          <>
+            <Field
+              label="Batch year"
+              type="number"
+              min={2008}
+              max={2100}
+              required
+              value={data.Batch}
+              onChange={(v) => update('Batch', v)}
+            />
+            <Field
+              label="Current status"
+              required
+              value={data.CurrentStatus}
+              onChange={(v) => update('CurrentStatus', v)}
+            />
+            <Field
+              label="Institute"
+              value={data.Institute}
+              onChange={(v) => update('Institute', v)}
+            />
+          </>
+        )}
+        <Field
+          label="Attendance"
+          value={data[meet ? 'Attend' : 'attend']}
+          options={['Yes', 'No']}
+          required
+          onChange={(v) => update(meet ? 'Attend' : 'attend', v)}
+        />
+        {meet && data.Attend === 'Yes' ? (
+          <>
+            <Field
+              label="Bringing companions?"
+              options={['Yes', 'No']}
+              required
+              value={data.Companions}
+              onChange={(v) => update('Companions', v)}
+            />
+            {data.Companions === 'Yes' && (
+              <Field
+                label="Number of companions"
+                type="number"
+                min={1}
+                max={10}
+                required
+                value={data.CompanionCount}
+                onChange={(v) => update('CompanionCount', Number(v))}
+              />
+            )}
+            <Field
+              label="Breakfast"
+              options={['Yes', 'No']}
+              value={data.Breakfast}
+              required
+              onChange={(v) => update('Breakfast', v)}
+            />
+            <Field
+              label="Lunch"
+              options={['Yes', 'No']}
+              value={data.Lunch}
+              required
+              onChange={(v) => update('Lunch', v)}
+            />
+            <Field
+              label="T-shirt size"
+              options={['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL']}
+              value={data.Tshirt}
+              required
+              onChange={(v) => update('Tshirt', v)}
+            />
+            <Field
+              label="Interested in mentoring / stage participation?"
+              options={['Yes', 'No']}
+              value={data.Mentor}
+              required
+              onChange={(v) => update('Mentor', v)}
+            />
+          </>
+        ) : (
+          !meet && (
+            <Field
+              label="Number of companions"
+              type="number"
+              min={0}
+              max={10}
+              value={data.companions}
+              onChange={(v) => update('companions', Number(v))}
+            />
+          )
+        )}
+      </div>
+      <button disabled={busy || event.status === 'closed'}>
+        {busy ? 'Saving…' : 'Save registration'}
+      </button>
+      {message && (
+        <p role="status" className="alumni-notice">
+          {message}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="alumni-notice">
+          {error}
+        </p>
+      )}
+    </motion.form>
+  );
+}
+
 /** Load previous answers before rendering a registration form to avoid overwriting them. */
-function Registration({event,account}){const resource=useResource(event.id==='meet2026'?'/api/meet/me':`/api/events/${event.id}/registration`);return <><Status resource={resource}/>{resource.data&&<RegistrationForm event={event} account={account} initial={resource.data.registration||resource.data.response||{}}/>}</>;}
+function Registration({ event, account }) {
+  const resource = useResource(
+    event.id === 'meet2026' ? '/api/meet/me' : `/api/events/${event.id}/registration`
+  );
+  return (
+    <>
+      <Status resource={resource} />
+      {resource.data && (
+        <RegistrationForm
+          event={event}
+          account={account}
+          initial={resource.data.registration || resource.data.response || {}}
+        />
+      )}
+    </>
+  );
+}
+
 /** List published events and allow signed-in members to register or update their own answers. */
-export default function Events({onlyMeet=false}){const {account}=useAuth(),resource=useResource('/api/events');const [selected,setSelected]=useState(null);const events=(resource.data?.events||[]).filter(event=>!onlyMeet||event.id==='meet2026');return <Page title={onlyMeet?'Alumni Meet 2026':'Events'} intro="Come together, share memories, and make new ones."><Status resource={resource} empty={!events.length}/>{events.map(event=><article className="alumni-card" key={event.id}><h2>{event.title}</h2><p>{event.description}</p><p>{event.venue||'Venue to be announced'} · {event.starts_at?new Date(event.starts_at).toLocaleString('en-IN'):'Date to be announced'}</p>{event.registration_deadline&&<p>Register by {new Date(event.registration_deadline).toLocaleString('en-IN')}</p>}{account?<button disabled={event.status==='closed'} onClick={()=>setSelected(selected===event.id?null:event.id)}>{event.status==='closed'?'Registration closed':'Register / update'}</button>:<Link className="alumni-button" to="/profile">Sign in to register</Link>}{account&&selected===event.id&&<Registration key={event.id} event={event} account={account}/>}</article>)}</Page>;}
+export default function Events({ onlyMeet = false }) {
+  const { account } = useAuth();
+  const resource = useResource('/api/events');
+  const [selected, setSelected] = useState(null);
+  const events = (resource.data?.events || []).filter(
+    (event) => !onlyMeet || event.id === 'meet2026'
+  );
+
+  return (
+    <Page
+      eyebrow={onlyMeet ? 'Flagship Homecoming' : 'Gatherings & Meetups'}
+      title={onlyMeet ? 'Alumni Meet 2026' : 'Events'}
+      intro={
+        onlyMeet
+          ? 'The grand JNV Murshidabad reunion—reconnecting every batch back at campus with live RSVPs and hospitality planning.'
+          : 'Come together, share memories, and make new ones.'
+      }
+      actions={
+        <>
+          <Link
+            to={onlyMeet ? '/events' : '/reunion-2026'}
+            className="alumni-action-link alumni-btn-pad"
+          >
+            {onlyMeet ? 'View All Events' : 'Reunion 2026 Spotlight'}
+          </Link>
+          <Link to="/profile" className="alumni-action-ghost alumni-btn-pad">
+            {account ? 'My Member Profile' : 'Sign In to Register'}
+          </Link>
+        </>
+      }
+      aside={
+        <MotionCard className="alumni-glass alumni-panel-pad">
+          <div className="alumni-stack-md">
+            <img
+              src={`${import.meta.env.BASE_URL}${onlyMeet ? 'images/Alapan.jpg' : 'images/schoolimg.png'}`}
+              alt={onlyMeet ? 'Alumni Meet 2026 banner' : 'JNV Murshidabad campus'}
+              className="alumni-hero-media"
+            />
+            <div className="alumni-flex-wrap">
+              <span className="alumni-chip alumni-pill-pad">
+                <MapPin size={15} aria-hidden="true" />
+                <span>JNV Murshidabad Campus</span>
+              </span>
+              <span className="alumni-chip alumni-pill-pad">
+                <CheckCircle2 size={15} aria-hidden="true" />
+                <span>{events.length} Published</span>
+              </span>
+            </div>
+          </div>
+        </MotionCard>
+      }
+    >
+      <MotionSection
+        eyebrow={onlyMeet ? 'Meet 2026 Registration' : 'Published Calendar'}
+        title={onlyMeet ? 'Confirm your seat for Reunion 2026' : 'Upcoming & active alumni events'}
+        description="Sign in with Google to reserve your spot or update your registration details."
+        compact
+      >
+        <Status resource={resource} empty={!events.length} />
+
+        <div className="alumni-stack-md">
+          {events.map((event, idx) => (
+            <MotionCard key={event.id} delay={idx * 0.05} className="alumni-card">
+              <div className="alumni-flex-wrap">
+                <span className="alumni-badge alumni-pill-pad">{event.status || 'published'}</span>
+              </div>
+              <h2>{event.title}</h2>
+              <p className="alumni-muted">{event.description}</p>
+              <p>
+                {event.venue || 'Venue to be announced'} ·{' '}
+                {event.starts_at
+                  ? new Date(event.starts_at).toLocaleString('en-IN')
+                  : 'Date to be announced'}
+              </p>
+              {event.registration_deadline && (
+                <p className="alumni-muted">
+                  Register by {new Date(event.registration_deadline).toLocaleString('en-IN')}
+                </p>
+              )}
+              <div className="alumni-flex-wrap">
+                {account ? (
+                  <button
+                    disabled={event.status === 'closed'}
+                    onClick={() => setSelected(selected === event.id ? null : event.id)}
+                  >
+                    {event.status === 'closed' ? 'Registration closed' : 'Register / update'}
+                  </button>
+                ) : (
+                  <Link className="alumni-button" to="/profile">
+                    Sign in to register
+                  </Link>
+                )}
+              </div>
+              {account && selected === event.id && (
+                <Registration key={event.id} event={event} account={account} />
+              )}
+            </MotionCard>
+          ))}
+        </div>
+      </MotionSection>
+
+      <StatsShowcase
+        eyebrow={onlyMeet ? 'Reunion 2026 Overview' : 'Participation Snapshot'}
+        title={onlyMeet ? 'Built for a seamless homecoming' : 'How alumni events are coordinated'}
+        description="Real-time attendance and logistics synced directly with organizer dashboards."
+        stats={[
+          { label: 'Listed Events', value: String(events.length), detail: 'Published gatherings ready for registration.' },
+          { label: 'Member Auth', value: account ? 'Signed In' : 'Guest', detail: 'Google-verified identity prevents duplicate RSVPs.' },
+          { label: 'Companion Support', value: 'Up to 10', detail: 'Include family members and batchmates in one submission.' },
+          { label: 'Campus Venue', value: 'JNV MSD', detail: 'Murshidabad campus & regional city chapters.' },
+        ]}
+      />
+
+      <BentoFeatureBand
+        eyebrow="Registration Experience"
+        title="Everything tracked in one place"
+        description="Designed so both attendees and campus coordinators stay in sync."
+        items={EVENT_HIGHLIGHTS}
+      />
+
+      <TimelineBand
+        eyebrow={onlyMeet ? 'Reunion Day Flow' : 'Typical Meet Agenda'}
+        title={onlyMeet ? 'Alumni Meet 2026 program flow' : 'What to expect at an alumni gathering'}
+        description="A full day crafted around reconnection, nostalgia, and mentorship."
+        items={REUNION_SCHEDULE}
+      />
+
+      <FaqAccordionBand
+        title="Event registration guide"
+        description="Answers to common questions about signing up and updating details."
+        items={EVENT_FAQS}
+      />
+
+      <AlumniConnectDeck currentPath={onlyMeet ? '/reunion-2026' : '/events'} />
+    </Page>
+  );
+}

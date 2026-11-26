@@ -1,12 +1,128 @@
 import { useState } from 'react';
+import { motion } from 'motion/react';
 import { Field } from './UI';
-const fields = [['Name','Full name'],['Batch','Batch year','number'],['Phone','Phone','tel'],['Phone2','Alternate phone','tel'],['EmailId','Contact email','email'],['DOB','Date of birth','date'],['Address','Address'],['PinCode','Postcode'],['District','District'],['City','City'],['CurrentStatus','Current status'],['Institute','Institute'],['HQD','Highest qualification'],['Occupation','Occupation'],['Employment','Employment'],['Company','Company'],['WorkCity','Work city'],['Skills','Skills'],['Languages','Languages'],['linkedin','LinkedIn'],['fb','Facebook'],['insta','Instagram'],['twitter','Twitter / X'],['youtube','YouTube']];
+
+const fields = [
+  ['Name', 'Full name'],
+  ['Batch', 'Batch year', 'number'],
+  ['Phone', 'Phone', 'tel'],
+  ['Phone2', 'Alternate phone', 'tel'],
+  ['EmailId', 'Contact email', 'email'],
+  ['DOB', 'Date of birth', 'date'],
+  ['Address', 'Address'],
+  ['PinCode', 'Postcode'],
+  ['District', 'District'],
+  ['City', 'City'],
+  ['CurrentStatus', 'Current status'],
+  ['Institute', 'Institute'],
+  ['HQD', 'Highest qualification'],
+  ['Occupation', 'Occupation'],
+  ['Employment', 'Employment'],
+  ['Company', 'Company'],
+  ['WorkCity', 'Work city'],
+  ['Skills', 'Skills'],
+  ['Languages', 'Languages'],
+  ['linkedin', 'LinkedIn'],
+  ['fb', 'Facebook'],
+  ['insta', 'Instagram'],
+  ['twitter', 'Twitter / X'],
+  ['youtube', 'YouTube'],
+];
+
 /** Edit allowed profile fields while preserving legacy history values not changed by the form. */
 export default function ProfileForm({ initial = {}, onSave }) {
-  const [data,setData]=useState(initial),[message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const [data, setData] = useState(initial);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
   /** Submit the owner's complete editable profile and display server approval guidance. */
-  async function save(event){event.preventDefault();setBusy(true);setError('');setMessage('');try{const result=await onSave(data);setMessage(result.message||'Saved.');}catch(e){setError(e.message);}finally{setBusy(false);}}
+  async function save(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await onSave(data);
+      setMessage(result.message || 'Saved.');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** Update one form value without discarding other profile/history fields. */
-  function update(key,value){setData(current=>({...current,[key]:value}));}
-  return <form className="alumni-card" onSubmit={save}><div className="alumni-grid">{fields.map(([name,label,type='text'])=><Field key={name} name={name} label={label} type={type} required={['Name','Batch'].includes(name)} min={type==='number'?2008:undefined} max={type==='number'?2100:undefined} value={data[name]} onChange={value=>update(name,value)}/>)}<Field label="House" value={data.House} onChange={value=>update('House',value)} options={['Aravali','Nilgiri','Shivalik','Udaigiri']}/><Field label="Blood group" value={data.BloodGroup} onChange={value=>update('BloodGroup',value)} options={['A +ve','A -ve','B +ve','B -ve','AB +ve','AB -ve','O +ve','O -ve']}/></div><Field label="About me" multiline maxLength={400} value={data.Bio} onChange={value=>update('Bio',value)}/><Field label="School memories" multiline maxLength={1200} value={data.Memories} onChange={value=>update('Memories',value)}/><p>Name and batch changes need administrator approval. Your login account and role cannot be changed here.</p><button disabled={busy}>{busy?'Saving…':'Save profile'}</button>{message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}</form>;
+  function update(key, value) {
+    setData((current) => ({ ...current, [key]: value }));
+  }
+
+  return (
+    <motion.form
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="alumni-glass alumni-panel-pad alumni-stack-md"
+      onSubmit={save}
+    >
+      <div className="alumni-stack-sm">
+        <span className="alumni-eyebrow">Verified Dataset Record</span>
+        <h2>Alumni Profile Details</h2>
+      </div>
+
+      <div className="alumni-grid">
+        {fields.map(([name, label, type = 'text']) => (
+          <Field
+            key={name}
+            name={name}
+            label={label}
+            type={type}
+            required={['Name', 'Batch'].includes(name)}
+            min={type === 'number' ? 2008 : undefined}
+            max={type === 'number' ? 2100 : undefined}
+            value={data[name]}
+            onChange={(value) => update(name, value)}
+          />
+        ))}
+        <Field
+          label="House"
+          value={data.House}
+          onChange={(value) => update('House', value)}
+          options={['Aravali', 'Nilgiri', 'Shivalik', 'Udaigiri']}
+        />
+        <Field
+          label="Blood group"
+          value={data.BloodGroup}
+          onChange={(value) => update('BloodGroup', value)}
+          options={['A +ve', 'A -ve', 'B +ve', 'B -ve', 'AB +ve', 'AB -ve', 'O +ve', 'O -ve']}
+        />
+      </div>
+
+      <Field
+        label="About me"
+        multiline
+        maxLength={400}
+        value={data.Bio}
+        onChange={(value) => update('Bio', value)}
+      />
+      <Field
+        label="School memories"
+        multiline
+        maxLength={1200}
+        value={data.Memories}
+        onChange={(value) => update('Memories', value)}
+      />
+
+      <p className="alumni-muted">
+        Name and batch changes need administrator approval. Your login account and role cannot be changed here.
+      </p>
+
+      <div className="alumni-flex-wrap">
+        <button disabled={busy}>{busy ? 'Saving…' : 'Save profile'}</button>
+      </div>
+
+      {message && <p role="status" className="alumni-notice">{message}</p>}
+      {error && <p role="alert" className="alumni-notice">{error}</p>}
+    </motion.form>
+  );
 }
