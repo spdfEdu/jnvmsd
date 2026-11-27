@@ -32,3 +32,5 @@ dist-ssr
 
 test-results/
 playwright-report/
+# npm cache made when use-d-drive.ps1 runs outside Windows
+api/D:/

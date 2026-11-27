@@ -92,8 +92,11 @@ export default function Directory({ donors = false }) {
   );
   const [search, setSearch] = useState('');
   const full = account?.isAdmin || account?.isCore;
+  // blood groups are only sent to approved alumni (and admins / core members)
+  const member = full || account?.member?.status === 'approved';
+  const level = full ? 'full' : member ? 'member' : 'public';
   const resource = useResource(
-    /^\d{4}$/.test(batch) ? `/api/batch/${batch}?level=${full ? 'full' : 'public'}` : null
+    /^\d{4}$/.test(batch) ? `/api/batch/${batch}?level=${level}` : null
   );
   const entries = (resource.data?.entries || []).filter(
     (row) =>
@@ -166,6 +169,12 @@ export default function Directory({ donors = false }) {
             <Field label="Search by name" value={search} onChange={setSearch} />
           </div>
 
+          {donors && !member && (
+            <p className="alumni-notice">
+              Blood groups are visible only to approved alumni.{' '}
+              <Link to="/profile">Sign in and complete your profile</Link> to see donors.
+            </p>
+          )}
           {full ? (
             <p className="alumni-notice">
               Contact details are visible to you as an authorized organizer.
@@ -190,10 +199,10 @@ export default function Directory({ donors = false }) {
               transition={{ duration: 0.35, delay: Math.min(index * 0.04, 0.3) }}
               whileHover={{ y: -4 }}
             >
-              {(row.photo || row.gpic) && (
+              {row.photo && (
                 <img
                   className="alumni-avatar"
-                  src={row.photo || row.gpic}
+                  src={row.photo}
                   alt={row.Name}
                   loading="lazy"
                 />
