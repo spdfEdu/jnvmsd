@@ -6,7 +6,10 @@ keep_vars = true
 
 [vars]
 GOOGLE_CLIENT_ID = "1019761610975-qba21qjqvvlr8kbeda7sut319m6gnt2f.apps.googleusercontent.com"
-ALLOWED_ORIGINS = "https://jnvmsd.blogspot.com,https://jnvmsdalumni.blogspot.com"
+# the new site first; the old Blogspot sites stay until the switch-over is finished
+ALLOWED_ORIGINS = "https://spdfedu.github.io,https://jnvmsd.blogspot.com,https://jnvmsdalumni.blogspot.com"
+# used for links in emails (the reminder links to SITE_URL + "/manage")
+SITE_URL = "https://spdfedu.github.io/jnvmsd"
 
 [[d1_databases]]
 binding = "DB"

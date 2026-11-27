@@ -4,6 +4,7 @@ import { announcementsRoute } from './src/announcements.js';
 import { contactRoute } from './src/contact.js';
 import { eventsRoute } from './src/events.js';
 import { galleryRoute, cleanupGallery, removeGallery } from './src/gallery.js';
+import { readBytes } from './src/http.js';
 // JNV MSD alumni API (Cloudflare Worker + D1)
 // Public pages read approved data; members edit their own entry; admins approve.
 
@@ -24,11 +25,17 @@ const HANDLES = ["fb", "insta"]; // stored as the bare username
 const PUBLIC_KEYS = new Set([
   "Name", "Batch", "District", "CurrentStatus", "Institute", "HQD", "Employment",
   "Bio", "Occupation", "Company", "WorkCity", "City", "Skills", "Languages", "Memories",
-  "Achievements", "EduList", "WorkList", "JnvVisits", "House", "BloodGroup",
-  "linkedin", "twitter", "youtube", "fb", "insta", "rip", "ppl", "gpic", "photo", "tag", "gallery",
+  "Achievements", "EduList", "WorkList", "JnvVisits", "House",
+  "linkedin", "twitter", "youtube", "fb", "insta", "rip", "ppl", "photo", "tag", "gallery",
 ]);
-const KEEP_KEYS = ["ppl", "rip", "gpic"]; // old Drive photo id, memorial year, and the Google photo (saved at sign-in); not edited on the forms
+// Approved members (and admins / core) also see blood group, so the donor list is not open to strangers.
+const MEMBER_KEYS = new Set([...PUBLIC_KEYS, "BloodGroup"]);
+// Bump when the public payload changes so older cached copies are never served.
+const PUBLIC_CACHE_TAG = "privacy=3";
+const KEEP_KEYS = ["ppl", "rip", "gpic"]; // old Drive photo id, memorial year, and an old saved Google photo (no longer shown); not edited on the forms
 const SESSION_DAYS = 30; // how long a sign-in lasts after the last visit
+const SESSION_MAX_DAYS = 90; // hard limit from sign-in: even an active session must sign in with Google again
+const CLOCK_SKEW = 300; // seconds of clock difference tolerated on Google token times
 const MAX_SESSIONS = 10; // devices per person
 const MAX_GALLERY = 5; // gallery photos per member (each shrunk to about 200 KB WebP by the browser)
 const MAX_GALLERY_BYTES = 230 * 1024;
@@ -61,6 +68,7 @@ function corsHeaders(origin, env) {
 
 /* ---------- Google sign-in check ---------- */
 let jwks = null, jwksAt = 0;
+const JWKS_MIN_REFRESH_MS = 60e3; // an unknown key id triggers at most one refetch a minute
 /** Decode the URL-safe base64 segment used by Google JWTs. */
 const b64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 /** Decode a JWT segment into its JSON payload. */
@@ -68,7 +76,9 @@ const b64uJson = (s) => JSON.parse(new TextDecoder().decode(b64u(s)));
 
 /** Fetch and cache Google public keys, refreshing when the signing key changes. */
 async function googleKey(kid) {
-  if (!jwks || Date.now() - jwksAt > 3600e3 || !jwks.some((k) => k.kid === kid)) {
+  const stale = !jwks || Date.now() - jwksAt > 3600e3;
+  const unknown = jwks && !jwks.some((k) => k.kid === kid);
+  if (stale || (unknown && Date.now() - jwksAt > JWKS_MIN_REFRESH_MS)) { // made-up key ids cannot force a fetch on every request
     const r = await fetch("https://www.googleapis.com/oauth2/v3/certs");
     if (!r.ok) throw new HttpError(503, "Cannot reach Google to check the login");
     jwks = (await r.json()).keys;
@@ -92,6 +102,7 @@ async function verifyGoogle(token, env) {
   if (!["https://accounts.google.com", "accounts.google.com"].includes(claims.iss)) throw new HttpError(401, "Bad token");
   if (claims.aud !== env.GOOGLE_CLIENT_ID) throw new HttpError(401, "Token is for another app");
   if (!claims.exp || claims.exp < now()) throw new HttpError(401, "Login expired, please sign in again");
+  if ((claims.iat && claims.iat > now() + CLOCK_SKEW) || (claims.nbf && claims.nbf > now() + CLOCK_SKEW)) throw new HttpError(401, "Bad token");
   if (!claims.email || claims.email_verified !== true) throw new HttpError(401, "Email not verified");
   return { sub: claims.sub, email: String(claims.email).toLowerCase(), name: claims.name || "", picture: claims.picture || "" };
 }
@@ -107,20 +118,25 @@ async function sha256Hex(text) {
 async function sessionUser(env, token) {
   const hash = await sha256Hex(token);
   const row = await env.DB.prepare("SELECT * FROM sessions WHERE token_hash = ?").bind(hash).first();
-  if (!row || row.expires_at < now()) throw new HttpError(401, "Your sign-in expired. Please sign in again.");
-  if (now() - row.last_used > 86400) { // each visit pushes the end date out again (at most once a day)
-    await env.DB.prepare("UPDATE sessions SET last_used = ?, expires_at = ? WHERE token_hash = ?").bind(now(), now() + SESSION_DAYS * 86400, hash).run();
+  const hardEnd = row ? row.created_at + SESSION_MAX_DAYS * 86400 : 0;
+  if (!row || row.expires_at < now() || hardEnd < now()) {
+    if (row) await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(hash).run();
+    throw new HttpError(401, "Your sign-in expired. Please sign in again.");
+  }
+  if (now() - row.last_used > 86400) { // each visit pushes the end date out again (at most once a day), never past the hard limit
+    await env.DB.prepare("UPDATE sessions SET last_used = ?, expires_at = ? WHERE token_hash = ?").bind(now(), Math.min(now() + SESSION_DAYS * 86400, hardEnd), hash).run();
   }
   return { sub: row.sub, email: row.email, name: row.name || "", picture: row.picture || "" };
 }
 
-/** Authenticate either a Google ID token or an application session token. */
+/** Authenticate an application session token. Google ID tokens are accepted only by POST /api/session,
+ *  so every other request goes through a session that can be signed out and expires. */
 async function requireUser(req, env) {
   const h = req.headers.get("Authorization") || "";
   if (!h.startsWith("Bearer ")) throw new HttpError(401, "Please sign in");
   const t = h.slice(7);
-  if (t.split(".").length === 3) return verifyGoogle(t, env); // a Google sign-in token (valid for an hour)
-  return sessionUser(env, t); // our own session token
+  if (!/^[A-Za-z0-9_-]{20,200}$/.test(t)) throw new HttpError(401, "Please sign in"); // not one of our session tokens
+  return sessionUser(env, t);
 }
 
 // Roles: "owner" comes from the ADMIN_EMAILS setting and can never be removed. "admin" and "core" come from the roles table.
@@ -253,8 +269,8 @@ async function notifyPending(env) {
   const to = admins[Math.floor(Math.random() * admins.length)];
   if (!env.EMAIL || !env.MAIL_FROM) return { sent: false, pending: results.length, to, reason: "Email is not set up yet (needs the EMAIL binding and MAIL_FROM)" };
 
-  const origin = String(env.ALLOWED_ORIGINS || "").split(",")[0].trim();
-  const link = env.ADMIN_URL || (origin ? origin + "/p/admin.html" : "");
+  const site = String(env.SITE_URL || "").trim().replace(/\/+$/, "");
+  const link = env.ADMIN_URL || (site ? site + "/manage" : "");
   const lines = results.slice(0, 25).map((r) => {
     const live = r.status === "approved" ? parse(r.data) || {} : {};
     const dr = parse(r.draft) || {};
@@ -337,11 +353,13 @@ function entryOf(row, level, origin, tag, gallery) {
   const d = JSON.parse(row.data || "{}");
   d.Batch = row.batch;
   d.Name = d.Name || row.name;
-  if (row.photo) { d.photo = origin + "/api/photo/" + row.photo; delete d.gpic; } // an uploaded photo always wins
+  if (row.photo) d.photo = origin + "/api/photo/" + row.photo;
+  delete d.gpic; // the Google account photo is never published; only a photo the member uploads is shown
   if (tag) d.tag = tag; // "Admin" or "Core Member", shown on the profile
   if (gallery && gallery.length) d.gallery = gallery; // every uploaded photo shows on the profile
   if (level !== "full") {
-    for (const k of Object.keys(d)) if (!PUBLIC_KEYS.has(k)) delete d[k];
+    const allowed = level === "member" ? MEMBER_KEYS : PUBLIC_KEYS;
+    for (const k of Object.keys(d)) if (!allowed.has(k)) delete d[k];
   }
   return d;
 }
@@ -364,7 +382,9 @@ async function findMember(env, user) {
   if (!m) {
     m = await env.DB.prepare("SELECT * FROM members WHERE email = ? AND sub IS NULL").bind(user.email).first();
     if (m) {
-      await env.DB.prepare("UPDATE members SET sub = ?, updated_at = ? WHERE id = ?").bind(user.sub, now(), m.id).run();
+      // "sub IS NULL" again here: if two sign-ins race, only the first can claim the entry
+      const r = await env.DB.prepare("UPDATE members SET sub = ?, updated_at = ? WHERE id = ? AND sub IS NULL").bind(user.sub, now(), m.id).run();
+      if (!r.meta.changes) return env.DB.prepare("SELECT * FROM members WHERE sub = ?").bind(user.sub).first();
       m.sub = user.sub;
     }
   }
@@ -402,16 +422,17 @@ async function photoResponse(env, key, cache) {
 /** Remove a stored DP when its reference is replaced or deleted. */
 const dropPhoto = (env, key) => (key ? env.DB.prepare("DELETE FROM photos WHERE key = ?").bind(key).run() : null);
 
-/** Promote a pending DP to a public key during administrator approval. */
-async function promotePhoto(env, mem) {
-  // move a pending photo to live, return the new key
-  const there = await env.DB.prepare("SELECT key FROM photos WHERE key = ?").bind(mem.draft_photo).first();
-  if (!there) return mem.photo;
+/** Statements that move a pending DP to a new live key and drop the old live one, for use inside one DB batch.
+ *  Returns { key, stmts }; key is the photo the member should point at afterwards. */
+async function promoteStmts(env, mem) {
+  const there = mem.draft_photo && await env.DB.prepare("SELECT key FROM photos WHERE key = ?").bind(mem.draft_photo).first();
+  if (!there) return { key: mem.photo, stmts: [] };
   const key = "live/" + mem.id + "-" + Date.now() + "." + mem.draft_photo.split(".").pop();
-  await env.DB.prepare("UPDATE photos SET key = ? WHERE key = ?").bind(key, mem.draft_photo).run();
-  await dropPhoto(env, mem.photo);
-  return key;
+  const stmts = [env.DB.prepare("UPDATE photos SET key = ? WHERE key = ?").bind(key, mem.draft_photo)];
+  if (mem.photo) stmts.push(env.DB.prepare("DELETE FROM photos WHERE key = ?").bind(mem.photo));
+  return { key, stmts };
 }
+
 
 // One number that goes up whenever anything public changes. Pages keep their copy and ask "has it changed?".
 /** Read the directory revision used by clients and cache invalidation. */
@@ -438,7 +459,7 @@ async function dropGalleryPhoto(env, id) {
 async function dropPublicCache(url, years) {
   if (typeof caches === "undefined" || !caches.default) return;
   for (const y of new Set(years)) {
-    try { await caches.default.delete(new Request(url.origin + "/api/batch/" + y + "?level=public&privacy=2")); } catch {}
+    try { await caches.default.delete(new Request(url.origin + "/api/batch/" + y + "?level=public&" + PUBLIC_CACHE_TAG)); } catch {}
   }
 }
 
@@ -453,13 +474,14 @@ async function route(req, url, env) {
 
   // public: approved entries of one batch (live data, cached for a minute)
   if (method === "GET" && (m = path.match(/^\/api\/batch\/(\d{4})$/))) {
-    const level = url.searchParams.get("level") === "full" ? "full" : "public";
+    const asked = url.searchParams.get("level");
+    const level = asked === "full" || asked === "member" ? asked : "public";
     const year = Number(m[1]);
     const ver = await getVer(env);
     // Always send sanitized data, including to clients holding an older public payload.
     let cacheKey = null;
     if (level === "public" && typeof caches !== "undefined" && caches.default) {
-      cacheKey = new Request(url.origin + "/api/batch/" + year + "?level=public&privacy=2");
+      cacheKey = new Request(url.origin + "/api/batch/" + year + "?level=public&" + PUBLIC_CACHE_TAG);
       const hit = await caches.default.match(cacheKey);
       if (hit) return new Response(hit.body, hit);
     }
@@ -467,6 +489,13 @@ async function route(req, url, env) {
       // phone, address and pin code: admins and core members only
       const user = await requireUser(req, env);
       if (!canSeeContacts(await roleOf(env, user))) throw new HttpError(403, "Contact details are for admins and core members");
+    } else if (level === "member") {
+      // blood group: approved alumni (anyone can sign in with Google, so signing in alone is not enough)
+      const user = await requireUser(req, env);
+      if (!(await roleOf(env, user))) {
+        const me = await findMember(env, user);
+        if (!me || me.status !== "approved") throw new HttpError(403, "Blood groups are shown to approved alumni. Complete your profile and wait for approval.");
+      }
     }
     const { results } = await env.DB.prepare("SELECT * FROM members WHERE status = 'approved' AND batch = ? ORDER BY name COLLATE NOCASE").bind(year).all();
     const roleRows = (await env.DB.prepare("SELECT email, role FROM roles").all()).results || [];
@@ -483,7 +512,7 @@ async function route(req, url, env) {
     const res = jsonRes(
       { batch: year, ver, count: results.length, slides: [...slides, ...historic.map(p => url.origin + "/api/gallery/photo/" + p.id)], entries: results.map((r) => entryOf(r, level, url.origin, tags.get(String(r.email).toLowerCase()), byMember.get(r.id))) },
       200,
-      { "Cache-Control": level === "full" ? "private, no-store" : "public, max-age=60" }
+      { "Cache-Control": level === "public" ? "public, max-age=60" : "private, no-store" }
     );
     if (cacheKey) await caches.default.put(cacheKey, res.clone());
     return res;
@@ -517,20 +546,18 @@ async function route(req, url, env) {
     return jsonRes({ ok: true });
   }
 
+  // sign out on every device (e.g. after losing a phone)
+  if (path === "/api/sessions" && method === "DELETE") {
+    const user = await requireUser(req, env);
+    const r = await env.DB.prepare("DELETE FROM sessions WHERE sub = ?").bind(user.sub).run();
+    return jsonRes({ ok: true, ended: r.meta.changes }, 200, { "Cache-Control": "no-store" });
+  }
+
   // signed-in member
   if (path === "/api/me" && method === "GET") {
     const user = await requireUser(req, env);
     const mem = await findMember(env, user);
     const role = await roleOf(env, user);
-    if (mem && mem.status === "approved" && /^https:\/\/[\w.-]+\.googleusercontent\.com\//.test(user.picture || "")) { // used on the profile only until they upload their own photo
-      const d = parse(mem.data) || {};
-      if (d.gpic !== user.picture) {
-        d.gpic = user.picture;
-        await env.DB.prepare("UPDATE members SET data = ? WHERE id = ?").bind(JSON.stringify(d), mem.id).run(); // not an edit: no undo copy, date unchanged
-        mem.data = JSON.stringify(d);
-        await touched(env, url, [mem.batch]);
-      }
-    }
     return jsonRes({ user, role, isAdmin: isAdminRole(role), isCore: role === "core", member: mem ? toRow(mem) : null }, 200, { "Cache-Control": "no-store" });
   }
 
@@ -546,6 +573,9 @@ async function route(req, url, env) {
 
     // 1) first time with this Gmail: a new entry that waits for the admin (keeps fake sign-ups out)
     if (!mem) {
+      // the email is unique: a row owned by a different Google account must not crash the insert
+      const taken = await env.DB.prepare("SELECT id FROM members WHERE email = ?").bind(user.email).first();
+      if (taken) throw new HttpError(409, "This Gmail already belongs to another Google account. Please contact the admin.");
       await env.DB.prepare(
         "INSERT INTO members (id, sub, email, batch, name, data, draft, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '{}', ?, 'pending', ?, ?)"
       ).bind(crypto.randomUUID(), user.sub, user.email, data.Batch, data.Name, JSON.stringify(data), t, t).run();
@@ -582,9 +612,10 @@ async function route(req, url, env) {
   }
   if (method === "GET" && (m = path.match(/^\/api\/meet\/names(?:\/(\d{4}))?$/))) {
     const year = m[1] ? Number(m[1]) : null; // no year: every batch, for the search box
-    const q = env.DB.prepare("SELECT id, name, batch FROM members WHERE status = 'approved'" + (year ? " AND batch = ?" : "") + " ORDER BY batch, name COLLATE NOCASE");
+    // names and batches only: internal member ids are never public
+    const q = env.DB.prepare("SELECT name, batch FROM members WHERE status = 'approved'" + (year ? " AND batch = ?" : "") + " ORDER BY batch, name COLLATE NOCASE");
     const { results } = await (year ? q.bind(year) : q).all();
-    const names = results.map((r) => ({ id: r.id, name: r.name, batch: r.batch }));
+    const names = results.map((r) => ({ name: r.name, batch: r.batch }));
     return jsonRes({ batch: year, names }, 200, { "Cache-Control": "public, max-age=60" });
   }
   // signed in: what the form needs (profile details to pre-fill, an earlier response, and whether to show View Responses)
@@ -615,7 +646,7 @@ async function route(req, url, env) {
     const c = clean({ Name: d.name, Batch: d.batch, Phone: d.phone, CurrentStatus: d.status, Institute: d.institute }, user.email);
     if (c.errors.length) throw new HttpError(400, c.errors.join(". "));
     const extra = {};
-    for (const k of ["Phone", "CurrentStatus"]) if (c.data[k] !== undefined && c.data[k] !== "") extra[k] = c.data[k];
+    for (const k of ["Phone", "CurrentStatus", "Institute"]) if (c.data[k] !== undefined && c.data[k] !== "") extra[k] = c.data[k];
     let mem = await findMember(env, user);
     let memberId = null, batch = d.batch, name = d.name, tail = "";
 
@@ -674,23 +705,23 @@ async function route(req, url, env) {
     const user = await requireUser(req, env);
     const mem = await findMember(env, user);
     if (!mem) throw new HttpError(400, "Save your details first, then add the photo");
-    const bytes = await req.arrayBuffer();
+    // stream with a cap so an oversized body is cut off instead of buffered in full
+    const bytes = await readBytes(req, MAX_PHOTO, HttpError).catch((e) => { throw e.status === 413 ? new HttpError(413, "Photo must be under 250 KB") : e; });
     if (!bytes.byteLength) throw new HttpError(400, "No photo received");
-    if (bytes.byteLength > MAX_PHOTO) throw new HttpError(413, "Photo must be under 250 KB");
     const type = imageType(bytes);
     if (!type) throw new HttpError(415, "Use a JPG, PNG or WebP photo");
     const approved = mem.status === "approved";
     const key = (approved ? "live/" : "pending/") + mem.id + "-" + Date.now() + "." + type[1];
-    await env.DB.prepare("INSERT INTO photos (key, content_type, data, created_at) VALUES (?, ?, ?, ?)").bind(key, type[0], toB64(bytes), now()).run();
-    if (approved) {
-      await dropPhoto(env, mem.photo);
-      await dropPhoto(env, mem.draft_photo);
-      await env.DB.prepare("UPDATE members SET photo = ?, draft_photo = NULL, updated_at = ? WHERE id = ?").bind(key, now(), mem.id).run();
-      await touched(env, url, [mem.batch]);
-    } else {
-      await dropPhoto(env, mem.draft_photo);
-      await env.DB.prepare("UPDATE members SET draft_photo = ?, updated_at = ? WHERE id = ?").bind(key, now(), mem.id).run();
-    }
+    // store the new photo, point the member at it and drop the old one together, so a failure leaves nothing half done
+    const old = (approved ? [mem.photo, mem.draft_photo] : [mem.draft_photo]).filter(Boolean);
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO photos (key, content_type, data, created_at) VALUES (?, ?, ?, ?)").bind(key, type[0], toB64(bytes), now()),
+      approved
+        ? env.DB.prepare("UPDATE members SET photo = ?, draft_photo = NULL, updated_at = ? WHERE id = ?").bind(key, now(), mem.id)
+        : env.DB.prepare("UPDATE members SET draft_photo = ?, updated_at = ? WHERE id = ?").bind(key, now(), mem.id),
+      ...old.map((k) => env.DB.prepare("DELETE FROM photos WHERE key = ?").bind(k)),
+    ]);
+    if (approved) await touched(env, url, [mem.batch]);
     return jsonRes({ ok: true });
   }
 
@@ -736,7 +767,8 @@ async function route(req, url, env) {
       return jsonRes({ ok: true });
     }
     if (method === "DELETE" && (m = path.match(/^\/api\/admin\/roles\/(.+)$/))) {
-      const email = decodeURIComponent(m[1]).toLowerCase().trim();
+      let email;
+      try { email = decodeURIComponent(m[1]).toLowerCase().trim(); } catch { throw new HttpError(400, "Enter a valid email"); }
       if (owners(env).includes(email)) throw new HttpError(400, "An owner cannot be removed here");
       await env.DB.prepare("DELETE FROM roles WHERE email = ?").bind(email).run();
       await bumpVer(env);
@@ -766,10 +798,14 @@ async function route(req, url, env) {
         const { data, errors } = clean({ ...base, ...(parse(mem.draft) || {}) }, mem.email);
         if (errors.length) throw new HttpError(400, errors.join(". "));
         keepLegacy(base, data);
-        const photo = mem.draft_photo ? await promotePhoto(env, mem) : mem.photo;
-        await env.DB.prepare(
-          "UPDATE members SET data = ?, prev = ?, batch = ?, name = ?, photo = ?, draft = NULL, draft_photo = NULL, status = 'approved', updated_at = ? WHERE id = ?"
-        ).bind(JSON.stringify(data), mem.status === "approved" ? mem.data : mem.prev, data.Batch, data.Name, photo, now(), id).run();
+        const { key: photo, stmts } = await promoteStmts(env, mem);
+        // photo move and profile update succeed or fail together
+        await env.DB.batch([
+          ...stmts,
+          env.DB.prepare(
+            "UPDATE members SET data = ?, prev = ?, batch = ?, name = ?, photo = ?, draft = NULL, draft_photo = NULL, status = 'approved', updated_at = ? WHERE id = ?"
+          ).bind(JSON.stringify(data), mem.status === "approved" ? mem.data : mem.prev, data.Batch, data.Name, photo, now(), id),
+        ]);
         await touched(env, url, [mem.batch, data.Batch]);
         return jsonRes({ ok: true });
       }
@@ -803,19 +839,17 @@ async function route(req, url, env) {
         const { data, errors } = clean({ ...tdata, ...(parse(mem.draft) || {}), Name: tdata.Name || target.name, Batch: target.batch }, mem.email);
         if (errors.length) throw new HttpError(400, errors.join(". "));
         keepLegacy(tdata, data);
-        const sub = mem.sub, email = mem.email, draftPhoto = mem.draft_photo;
+        const sub = mem.sub, email = mem.email;
+        const { key: photo, stmts: photoStmts } = await promoteStmts(env, { ...target, draft_photo: mem.draft_photo });
         // Keep ownership and registration references together if any statement fails.
         await env.DB.batch([
           env.DB.prepare("DELETE FROM members WHERE id = ?").bind(mem.id),
-          env.DB.prepare("UPDATE members SET sub = ?, email = ?, data = ?, prev = ?, updated_at = ? WHERE id = ?")
-            .bind(sub, email, JSON.stringify(data), target.data, now(), target.id),
+          ...photoStmts,
+          env.DB.prepare("UPDATE members SET sub = ?, email = ?, data = ?, prev = ?, photo = ?, updated_at = ? WHERE id = ?")
+            .bind(sub, email, JSON.stringify(data), target.data, photo, now(), target.id),
           env.DB.prepare("UPDATE meet2026 SET member_id = ? WHERE member_id = ?")
             .bind(target.id, mem.id),
         ]);
-        if (draftPhoto) {
-          const moved = await promotePhoto(env, { ...target, draft_photo: draftPhoto });
-          await env.DB.prepare("UPDATE members SET photo = ? WHERE id = ?").bind(moved, target.id).run();
-        }
         await touched(env, url, [target.batch]);
         return jsonRes({ ok: true });
       }
@@ -847,7 +881,10 @@ async function route(req, url, env) {
         for (const k of [mem.photo, mem.draft_photo]) await dropPhoto(env, k);
         const gs = (await env.DB.prepare("SELECT id FROM gallery WHERE member_id = ?").bind(mem.id).all()).results || [];
         for (const g of gs) await dropGalleryPhoto(env, g.id);
-        await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id).run();
+        await env.DB.batch([
+          env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id),
+          ...(mem.sub ? [env.DB.prepare("DELETE FROM sessions WHERE sub = ?").bind(mem.sub)] : []), // a deleted member is signed out everywhere
+        ]);
         await touched(env, url, [mem.batch]);
         return jsonRes({ ok: true });
       }
@@ -861,6 +898,7 @@ export default {
   /** Run the configured reminder job without blocking the scheduled invocation. */
   async scheduled(event, env, ctx) {
     ctx.waitUntil(cleanupGallery(env));
+    ctx.waitUntil(env.DB.prepare("DELETE FROM sessions WHERE expires_at < ? OR created_at < ?").bind(now(), now() - SESSION_MAX_DAYS * 86400).run().catch((e) => console.error("session cleanup failed", e)));
     ctx.waitUntil(notifyPending(env).then((r) => console.log("pending mail:", JSON.stringify(r))).catch((e) => console.error("pending mail error", e)));
   },
   /** Apply CORS and convert known failures into stable HTTP responses. */
@@ -876,6 +914,10 @@ export default {
     }
     const out = new Response(res.body, res);
     for (const [k, v] of Object.entries(cors)) out.headers.set(k, v);
+    // the API only serves JSON and images: never let a browser guess another type or run anything from it
+    out.headers.set("X-Content-Type-Options", "nosniff");
+    out.headers.set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; sandbox");
+    out.headers.set("Referrer-Policy", "no-referrer");
     return out;
   },
 };
